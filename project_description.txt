@@ -1,0 +1,145 @@
+Here is the complete text from the document converted into clean Markdown:
+
+---
+
+# 6AM LLM Club - Marketing Intelligence Layer (6AM Cohort)
+
+## Brief
+
+* **Hours Last 7 Days:** 0h
+* **Hours Total:** 0h
+* **Status:** Building / Idle
+
+---
+
+## Marketing Intelligence Layer - 6AM Cohort
+
+> **Finish line - Aug 28, 2026:** Ship a continuous-learning system that turns WhatsApp conversation + Meta ad data into a scoreboard + next-campaign recommendation at three levels (campaign, adset, ad). You're judged on honesty on data you never see, not a leaderboard score.
+> 
+> 
+
+### What You Hand In
+
+One row per ID with a calibrated score and an action a human can take. The exact schema is yours to design; for example:
+
+```json
+{
+  "level": "ad",
+  "id": "120209017",
+  "score": 0.78,
+  "action": "scale",
+  "bucket": "exploit",
+  "why": [
+    "3 sales / 18 clicks",
+    "CTR stable over 14 days"
+  ]
+}
+```[cite: 1]
+
+Same shape keyed at `campaign_id` and `adset_id`.[cite: 1] Plus:
+* **Code:** The code that regenerates the table from the data (re-runnable, config-driven, no notebook archaeology).[cite: 1]
+* **Evaluation:** An honest held-out evaluation (calibration + simulated business impact) on a holdout you reserve yourself, kept separate from the secret set we grade on, which you never see.[cite: 1]
+* **Documentation:** A 1-2 page architecture note + a few merchant-readable findings.[cite: 1]
+
+---
+
+## The Problem
+
+A premium-food merchant in Cairo runs Meta ads $\rightarrow$ customers land in WhatsApp $\rightarrow$ they chat, buy, refund, come back.[cite: 1] Meta only ever sees the click.[cite: 1] Every message, order, and refund after it is first-party data that today sits unused in the chat logs.[cite: 1] Your job: turn it into campaign decisions.[cite: 1]
+
+### The Three Levels Your Recommendation Answers
+1. **Campaign:** The goal (Sales / Leads / Awareness)[cite: 1]
+2. **Ad Set:** The audience (+ budget)[cite: 1]
+3. **Ad:** The creative (what the customer actually saw)[cite: 1]
+
+Your scoreboard scores all three.[cite: 1] Your recommendation answers all three: which strategy, which audience, which creative.[cite: 1]
+
+---
+
+## The 70/30 Rule - Exploit AND Explore
+
+Your recommendation splits the next budget—it doesn't just rank winners:[cite: 1]
+
+* **~70% Exploit:** Scale what's proven, with high confidence.[cite: 1]
+* **~30% Explore:** 2-3 specific tests, each with a hypothesis and a stop criterion.[cite: 1]
+
+**Why both:** Pure "scale what works" collapses when winners fatigue or the season shifts; pure "test everything" burns budget.[cite: 1] The split moves with your confidence and the season: more explore when confidence is low or a new cycle begins (Ramadan $\rightarrow$ Eid $\rightarrow$ Summer).[cite: 1]
+
+---
+
+## The Data - Reading It Is Part of the Job
+
+| File | What's inside |
+| :--- | :--- |
+| `conversations.json`[cite: 1] | **788 conversations**, 3 seasonal cycles, 117 customers recur across cycles. `outcome.type` (`delivered` / `ghosted` / `refunded` / `cancelled` / `stuck_pending` / ...) is your ground-truth label.[cite: 1] |
+| `products.json`[cite: 1] | **105 products** (`id`, `category`, `price`, `tags`).[cite: 1] |
+| `meta_data.json`[cite: 1] | **12 campaigns**, 26 ad sets $\rightarrow$ 40 ads, 30 creatives + ~1243 daily insight rows over 180 days.[cite: 1] |
+
+**Join spine:** `conv.source.ad_id` $\rightarrow$ `ads.adset_id` $\rightarrow$ `adsets.campaign_id`, `ads.creative_id` $\rightarrow$ `creatives`, `insights.ad_id` + `date`, `line_items.product_id` $\rightarrow$ `products`, and group by `customer.id` for customer journeys.[cite: 1] Only `meta_ctwa` conversations carry ad metadata; `organic` and `direct` don't.[cite: 1]
+
+---
+
+## Continuous Learning: One System, Static + Dynamic Parts
+
+It is one system, not a model.[cite: 1] Some parts of it are built once and never change; one part retrains every cycle.[cite: 1] Keeping the two separate is what lets the system keep getting sharper without being rebuilt.[cite: 1]
+
+* **Static (The skeleton, built once):** The pipeline that ingests and joins the data, the decision rules (scoring, the 70/30 split, the actions), the output schema, and how you evaluate.[cite: 1] Same every cycle.[cite: 1]
+* **Dynamic (The muscle that grows):** The predictors inside the system that learn (outcome / LTV / creative-effectiveness / segmentation), re-fit each cycle on all the data so far (past cycles plus the new one) as new data arrives.[cite: 1] Their numbers move and the recommendations get sharper.[cite: 1]
+
+**How the two fit together:** The static parts only ever see a fixed output shape from the dynamic parts: a calibrated score plus a confidence.[cite: 1] That fixed shape is the contract between them.[cite: 1] Because the shape never changes, you can retrain, tune, or swap any predictor between cycles and nothing else in the system has to change.[cite: 1] The skeleton defines the sockets; the predictors are what plug into them.[cite: 1]
+
+> *Skeleton stays; the muscles get stronger every cycle.*[cite: 1]
+
+---
+
+## Non-Negotiable Rules
+
+* **Holdout is sacred:** Touch it once, at the very end.[cite: 1] Tuning on it invalidates the result.[cite: 1]
+* **Never random-split:** Split by `customer.id` or by time window; repeat customers leak across train/test.[cite: 1]
+* **Opaque IDs:** `ctwa_clid`, `source_url`, and `conv.id` are labels, not features.[cite: 1]
+* **Calibration matters:** "70% confidence" must be right ~70% of the time.[cite: 1]
+* **Numbers are upper bounds:** Small teaching data; >0.85 AUC on message text alone means you overfit templates.[cite: 1]
+
+---
+
+## How We Grade - Honesty, Not a High Score
+
+When you submit, we run your system on a fresh set of conversations you never saw, and judge six things:[cite: 1]
+
+1. **Reproducible:** We re-run it and get the numbers you reported (it runs from the data, no undocumented hand-tweaks).[cite: 1]
+2. **Honest:** No test data leaked into training.[cite: 1] Split by customer or by time, never randomly or the same customer lands on both sides and the score is fake.[cite: 1]
+3. **Calibrated:** When you say "82% likely to buy," it happens ~82% of the time.[cite: 1] Confidence has to mean something.[cite: 1]
+4. **Useful to a merchant:** The output drives a real decision ("prioritise these chats", "kill this ad"), not just a metric or a model file.[cite: 1]
+5. **Clear about limits:** You state what the model does not know (one merchant, 180 days, no inventory/footfall upper bounds, not promises).[cite: 1]
+6. **Extendable:** Someone can read your write-up and add a signal or swap a model without a rewrite.[cite: 1]
+
+> *The data is small and messy on purpose. A shiny 0.95 almost always means you fooled yourself. We reward honesty, calibration, and clear limits over a high score.*[cite: 1]
+
+---
+
+## How to Work - The Loop
+
+$$\text{Understand} \rightarrow \text{Frame} \rightarrow \text{Build} \rightarrow \text{Measure} \rightarrow \text{Decide} \rightarrow \text{Iterate}$$
+[cite: 1]
+
+Read the data before you build.[cite: 1] Decide how you'll grade yourself before you build.[cite: 1] Floor before fancy.[cite: 1] Inspect failures.[cite: 1] Report uncertainty.[cite: 1]
+
+---
+
+## Sample Dataset
+
+The challenge dataset for this cohort.[cite: 1] Download the full bundle, or grab individual files:[cite: 1]
+
+* **Download all (.zip)**[cite: 1]
+* `conversations.json`: Sample customer conversations.[cite: 1]
+* `meta_data.json`: Campaign and account metadata.[cite: 1]
+* `products.json`: Product catalogue.[cite: 1]
+
+---
+
+## Milestones
+
+1. **Understand the problem** — `@bahgat` (2026-07-06)[cite: 1]
+2. **Solve it by hand** — `@bahgat` (2026-07-13)[cite: 1]
+
+```

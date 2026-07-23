@@ -1,0 +1,23 @@
+=== conv.status (conversation-level) ===
+active
+closed
+pending_handoff
+stuck_pending
+
+=== outcome.type (final outcome) ===
+active
+adversarial
+cancelled
+delivered
+ghosted
+refunded
+stuck_pending
+
+=== status_history (order lifecycle) ===
+pending
+confirmed
+processing
+shipped
+delivered
+cancelled
+refunded
