@@ -1,0 +1,24 @@
+=== All unique statuses ===
+  conv.status: active
+  conv.status: closed
+  conv.status: pending_handoff
+  conv.status: stuck_pending
+  outcome.type: active
+  outcome.type: adversarial
+  outcome.type: cancelled
+  outcome.type: delivered
+  outcome.type: ghosted
+  outcome.type: refunded
+  outcome.type: stuck_pending
+  status_history.status: cancelled
+  status_history.status: confirmed
+  status_history.status: delivered
+  status_history.status: pending
+  status_history.status: processing
+  status_history.status: refunded
+  status_history.status: shipped
+
+=== Grouped by source ===
+  conv.status: ['active', 'closed', 'pending_handoff', 'stuck_pending']
+  outcome.type: ['active', 'adversarial', 'cancelled', 'delivered', 'ghosted', 'refunded', 'stuck_pending']
+  status_history.status: ['cancelled', 'confirmed', 'delivered', 'pending', 'processing', 'refunded', 'shipped']

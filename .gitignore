@@ -1,6 +1,3 @@
-# Generated outputs — everything here is reproducible via scripts/
-outputs/
-
 # Python bytecode
 __pycache__/
 *.pyc
