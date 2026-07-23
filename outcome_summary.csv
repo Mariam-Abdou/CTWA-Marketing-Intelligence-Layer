@@ -1,8 +1,0 @@
-outcome_type,count,total_revenue,avg_revenue
-active,34,0.0,0.0
-adversarial,18,0.0,0.0
-cancelled,68,74811.0,1100.2
-delivered,424,557802.0,1315.6
-ghosted,161,0.0,0.0
-refunded,56,65428.0,1168.4
-stuck_pending,27,25747.0,953.6

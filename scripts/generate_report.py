@@ -375,7 +375,8 @@ html += ''']\n  },\n  options: {\n    responsive: true,\n    plugins: {\n      l
 </body>
 </html>'''
 
-with open(f"{BASE}/report.html", "w") as f:
+os.makedirs(f"{BASE}/outputs", exist_ok=True)
+with open(f"{BASE}/outputs/report.html", "w") as f:
     f.write(html)
 
 print(f"Saved report.html ({len(html):,} bytes)")

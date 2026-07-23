@@ -369,8 +369,10 @@ print("\n" + "=" * 60)
 print("SAVING RESULTS")
 print("=" * 60)
 
+os.makedirs(f"{BASE}/outputs", exist_ok=True)
+
 # 1. Joined conversations
-with open(f"{BASE}/joined_conversations.json", "w") as f:
+with open(f"{BASE}/outputs/joined_conversations.json", "w") as f:
     json.dump(joined, f, indent=2, ensure_ascii=False)
 print(f"  Saved joined_conversations.json ({len(joined)} records)")
 
@@ -470,7 +472,7 @@ for c in joined:
 for cname, stats in sorted(campaign_revenue.items(), key=lambda x: -x[1]["revenue"]):
     w(f"  {cname:60s} | convs={stats['convs']:2d} rev={stats['revenue']:6.0f} outcomes={dict(stats['outcomes'])}")
 
-with open(f"{BASE}/exploration_report.txt", "w") as f:
+with open(f"{BASE}/outputs/exploration_report.txt", "w") as f:
     f.write("\n".join(report_lines))
 print(f"  Saved exploration_report.txt ({len(report_lines)} lines)")
 
@@ -495,7 +497,7 @@ for c in joined:
     if oc and oc.get("total"):
         campaign_rows[cid]["total_revenue"] += oc["total"]
 
-with open(f"{BASE}/campaign_summary.csv", "w", newline="") as f:
+with open(f"{BASE}/outputs/campaign_summary.csv", "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames)
     writer.writeheader()
     for row in campaign_rows.values():
@@ -504,7 +506,7 @@ print(f"  Saved campaign_summary.csv ({len(campaign_rows)} rows)")
 
 # 4. Outcome summary CSV
 outcome_fieldnames = ["outcome_type", "count", "total_revenue", "avg_revenue"]
-with open(f"{BASE}/outcome_summary.csv", "w", newline="") as f:
+with open(f"{BASE}/outputs/outcome_summary.csv", "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=outcome_fieldnames)
     writer.writeheader()
     for otype, cnt in sorted(outcome_counts.items()):
@@ -519,7 +521,7 @@ print(f"  Saved outcome_summary.csv")
 
 # 5. Platform summary CSV
 platform_fieldnames = ["platform", "count", "total_revenue"]
-with open(f"{BASE}/platform_summary.csv", "w", newline="") as f:
+with open(f"{BASE}/outputs/platform_summary.csv", "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=platform_fieldnames)
     writer.writeheader()
     for plat in sorted(platform_counts.keys()):
