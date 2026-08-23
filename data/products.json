@@ -1,0 +1,1101 @@
+[
+  {
+    "id": "prod_001",
+    "name": "Powdered Sugar 500g",
+    "category": "sugar",
+    "price": 49,
+    "tags": []
+  },
+  {
+    "id": "prod_002",
+    "name": "Pure Rose Water for Baking 200ml",
+    "category": "spices",
+    "price": 97,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_003",
+    "name": "Dish Soap Concentrate 1L",
+    "category": "household_basics",
+    "price": 67,
+    "tags": []
+  },
+  {
+    "id": "prod_004",
+    "name": "Almond Flour 250g",
+    "category": "flour",
+    "price": 169,
+    "tags": [
+      "organic",
+      "sugar_free"
+    ]
+  },
+  {
+    "id": "prod_005",
+    "name": "Dark Roast Brazilian Arabica 500g",
+    "category": "coffee",
+    "price": 379,
+    "tags": [
+      "artisan",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_006",
+    "name": "Egyptian Mint Herbal Tea 50g",
+    "category": "tea",
+    "price": 97,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_007",
+    "name": "Cocoa Spice Blend Limited Edition 80g",
+    "category": "spices",
+    "price": 157,
+    "tags": [
+      "artisan",
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_008",
+    "name": "Mixed Pickles Egyptian Style 500g",
+    "category": "snacks",
+    "price": 53,
+    "tags": []
+  },
+  {
+    "id": "prod_009",
+    "name": "Cold-Pressed Coconut Oil 500ml",
+    "category": "oils",
+    "price": 243,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_010",
+    "name": "Smoked Paprika Andalusian 80g",
+    "category": "spices",
+    "price": 79,
+    "tags": [
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_011",
+    "name": "Green Tea Loose Leaf 100g",
+    "category": "tea",
+    "price": 163,
+    "tags": [
+      "artisan",
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_012",
+    "name": "Egyptian Brown Lentils 1kg",
+    "category": "rice",
+    "price": 67,
+    "tags": [
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_013",
+    "name": "Pure Date Syrup 250ml",
+    "category": "sugar",
+    "price": 99,
+    "tags": [
+      "artisan",
+      "sugar_free"
+    ]
+  },
+  {
+    "id": "prod_014",
+    "name": "Medium Roast Yemeni Mocha 250g",
+    "category": "coffee",
+    "price": 321,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_015",
+    "name": "All-Purpose Cleaner 1L",
+    "category": "household_basics",
+    "price": 59,
+    "tags": []
+  },
+  {
+    "id": "prod_016",
+    "name": "Sugar-Free Dark Chocolate 70% 100g",
+    "category": "chocolate",
+    "price": 169,
+    "tags": [
+      "artisan",
+      "sugar_free",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_017",
+    "name": "Sunflower Oil 1L",
+    "category": "oils",
+    "price": 75,
+    "tags": [
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_018",
+    "name": "Date-Sweetened Milk Chocolate 100g",
+    "category": "chocolate",
+    "price": 143,
+    "tags": [
+      "artisan",
+      "sugar_free"
+    ]
+  },
+  {
+    "id": "prod_019",
+    "name": "Pink Himalayan Salt 250g",
+    "category": "spices",
+    "price": 95,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_020",
+    "name": "Frozen French Fries 1kg",
+    "category": "frozen",
+    "price": 93,
+    "tags": []
+  },
+  {
+    "id": "prod_021",
+    "name": "Cold-Brewed Hibiscus Tea 1L",
+    "category": "beverages",
+    "price": 53,
+    "tags": [
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_022",
+    "name": "Truffle-Infused Olive Oil 100ml",
+    "category": "oils",
+    "price": 1447,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_023",
+    "name": "Fresh Orange Juice 1L",
+    "category": "beverages",
+    "price": 67,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_024",
+    "name": "Pure Madagascar Vanilla Beans 5-pack",
+    "category": "spices",
+    "price": 283,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_025",
+    "name": "Penne 500g",
+    "category": "pasta",
+    "price": 31,
+    "tags": []
+  },
+  {
+    "id": "prod_026",
+    "name": "Multigrain Seed Loaf",
+    "category": "bread",
+    "price": 73,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_027",
+    "name": "Stuffed Dried Dates Premium 250g",
+    "category": "sweets",
+    "price": 219,
+    "tags": [
+      "artisan",
+      "gift_friendly",
+      "ramadan_special"
+    ]
+  },
+  {
+    "id": "prod_028",
+    "name": "Dark Chocolate Truffles 12pc Box",
+    "category": "chocolate",
+    "price": 319,
+    "tags": [
+      "artisan",
+      "gift_friendly"
+    ]
+  },
+  {
+    "id": "prod_029",
+    "name": "Qamar El Din Apricot Paste 300g",
+    "category": "sweets",
+    "price": 197,
+    "tags": [
+      "artisan",
+      "ramadan_special"
+    ]
+  },
+  {
+    "id": "prod_030",
+    "name": "Clover Honey 500g",
+    "category": "honey",
+    "price": 373,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_031",
+    "name": "Dark Forest Honey 500g",
+    "category": "honey",
+    "price": 463,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_032",
+    "name": "Egyptian Pita Bread 6-pack",
+    "category": "bread",
+    "price": 33,
+    "tags": [
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_033",
+    "name": "Hostess Premium Gift Box",
+    "category": "bundles",
+    "price": 1447,
+    "tags": [
+      "artisan",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_057",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_014",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_028",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_101",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_034",
+    "name": "Mineral Water 1.5L 6-pack",
+    "category": "beverages",
+    "price": 50,
+    "tags": [
+      "bulk_pack",
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_035",
+    "name": "Single-Origin Ghanaian 80% Bar 80g",
+    "category": "chocolate",
+    "price": 197,
+    "tags": [
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_036",
+    "name": "Espresso Blend 1kg",
+    "category": "coffee",
+    "price": 717,
+    "tags": [
+      "artisan",
+      "bulk_pack"
+    ]
+  },
+  {
+    "id": "prod_037",
+    "name": "Ramadan Suhoor Essentials Box",
+    "category": "bundles",
+    "price": 689,
+    "tags": [
+      "artisan",
+      "ramadan_special",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_027",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_104",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_066",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_029",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_038",
+    "name": "Light Roast Ethiopian Yirgacheffe 250g",
+    "category": "coffee",
+    "price": 289,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_039",
+    "name": "Healthy Konafa Slices 250g",
+    "category": "sweets",
+    "price": 147,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_040",
+    "name": "Pure Sesame Tahini 500g",
+    "category": "spices",
+    "price": 149,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_041",
+    "name": "Coffee Lover Gift Box",
+    "category": "bundles",
+    "price": 843,
+    "tags": [
+      "artisan",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_014",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_005",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_016",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_042",
+    "name": "Dried Apricots 200g",
+    "category": "snacks",
+    "price": 89,
+    "tags": [
+      "ramadan_special"
+    ]
+  },
+  {
+    "id": "prod_043",
+    "name": "Single-Origin Decaf 250g",
+    "category": "coffee",
+    "price": 297,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_044",
+    "name": "Paper Towels 4-roll",
+    "category": "household_basics",
+    "price": 83,
+    "tags": [
+      "bulk_pack"
+    ]
+  },
+  {
+    "id": "prod_045",
+    "name": "Free-Range Duck Eggs 6-pack",
+    "category": "eggs",
+    "price": 143,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_046",
+    "name": "Iftar Essentials Premium Bundle",
+    "category": "bundles",
+    "price": 947,
+    "tags": [
+      "artisan",
+      "ramadan_special",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_050",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_104",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_029",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_072",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_101",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_047",
+    "name": "Brown Sugar 500g",
+    "category": "sugar",
+    "price": 50,
+    "tags": []
+  },
+  {
+    "id": "prod_048",
+    "name": "Fresh Eggs 12-pack",
+    "category": "eggs",
+    "price": 65,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_049",
+    "name": "Laundry Detergent 3kg",
+    "category": "household_basics",
+    "price": 287,
+    "tags": [
+      "bulk_pack",
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_050",
+    "name": "Premium Medjool Dates 500g",
+    "category": "sweets",
+    "price": 379,
+    "tags": [
+      "artisan",
+      "ramadan_special",
+      "gift_friendly"
+    ]
+  },
+  {
+    "id": "prod_051",
+    "name": "Frozen Mixed Vegetables 1kg",
+    "category": "frozen",
+    "price": 77,
+    "tags": []
+  },
+  {
+    "id": "prod_052",
+    "name": "Domiati White Cheese 250g",
+    "category": "dairy",
+    "price": 83,
+    "tags": []
+  },
+  {
+    "id": "prod_053",
+    "name": "Lasagna Sheets 500g",
+    "category": "pasta",
+    "price": 53,
+    "tags": []
+  },
+  {
+    "id": "prod_054",
+    "name": "Organic Brown Eggs 12-pack",
+    "category": "eggs",
+    "price": 97,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_055",
+    "name": "Whole Wheat Flour 1kg",
+    "category": "flour",
+    "price": 41,
+    "tags": []
+  },
+  {
+    "id": "prod_056",
+    "name": "Carob Molasses 250ml",
+    "category": "spices",
+    "price": 161,
+    "tags": [
+      "artisan",
+      "ramadan_special"
+    ]
+  },
+  {
+    "id": "prod_057",
+    "name": "Fayoum Orange Blossom Honey 1kg Gift Jar",
+    "category": "honey",
+    "price": 769,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "gift_friendly"
+    ]
+  },
+  {
+    "id": "prod_058",
+    "name": "Yemen Bunn Whole Bean Coffee 250g",
+    "category": "coffee",
+    "price": 423,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_059",
+    "name": "Tomato Paste Concentrated 400g",
+    "category": "sugar",
+    "price": 45,
+    "tags": []
+  },
+  {
+    "id": "prod_060",
+    "name": "Cake Flour 1kg",
+    "category": "flour",
+    "price": 67,
+    "tags": []
+  },
+  {
+    "id": "prod_061",
+    "name": "Pure Iranian Saffron 5g",
+    "category": "spices",
+    "price": 1847,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_062",
+    "name": "Egyptian Za'atar Premium Blend 100g",
+    "category": "spices",
+    "price": 87,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_063",
+    "name": "Extra Virgin Olive Oil 1L",
+    "category": "oils",
+    "price": 519,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_064",
+    "name": "Manuka Honey UMF 10+ 500g",
+    "category": "honey",
+    "price": 2353,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_065",
+    "name": "White Flour 1kg",
+    "category": "flour",
+    "price": 30,
+    "tags": [
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_066",
+    "name": "Mixed Roasted Nuts 250g",
+    "category": "snacks",
+    "price": 143,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_067",
+    "name": "Frozen Chicken Breast 1kg",
+    "category": "frozen",
+    "price": 163,
+    "tags": []
+  },
+  {
+    "id": "prod_068",
+    "name": "Sage and Chamomile Tea Blend 60g",
+    "category": "tea",
+    "price": 127,
+    "tags": [
+      "artisan",
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_069",
+    "name": "Hand-Carved Wooden Honey Trio Gift Set",
+    "category": "bundles",
+    "price": 1689,
+    "tags": [
+      "artisan",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_104",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_030",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_031",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_070",
+    "name": "Whole Wheat Pasta 500g",
+    "category": "pasta",
+    "price": 57,
+    "tags": []
+  },
+  {
+    "id": "prod_071",
+    "name": "Whole Milk 1L",
+    "category": "dairy",
+    "price": 34,
+    "tags": []
+  },
+  {
+    "id": "prod_072",
+    "name": "Roasted Almonds 200g",
+    "category": "snacks",
+    "price": 130,
+    "tags": []
+  },
+  {
+    "id": "prod_073",
+    "name": "Honey Tasting Trio Gift Box",
+    "category": "bundles",
+    "price": 917,
+    "tags": [
+      "artisan",
+      "gift_friendly",
+      "single_origin"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_080",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_030",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_079",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_074",
+    "name": "Salted Butter 200g",
+    "category": "dairy",
+    "price": 91,
+    "tags": []
+  },
+  {
+    "id": "prod_075",
+    "name": "Sparkling Mineral Water 750ml",
+    "category": "beverages",
+    "price": 37,
+    "tags": []
+  },
+  {
+    "id": "prod_076",
+    "name": "Smoked Honey 250g",
+    "category": "honey",
+    "price": 363,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_077",
+    "name": "Cold Brew Coarse Ground 250g",
+    "category": "coffee",
+    "price": 247,
+    "tags": [
+      "artisan",
+      "new_arrival"
+    ]
+  },
+  {
+    "id": "prod_078",
+    "name": "Egyptian Short-Grain Rice 1kg",
+    "category": "rice",
+    "price": 37,
+    "tags": [
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_079",
+    "name": "Wild Sidr Honey 250g",
+    "category": "honey",
+    "price": 591,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_080",
+    "name": "Fayoum Orange Blossom Honey 250g",
+    "category": "honey",
+    "price": 237,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "ramadan_special"
+    ]
+  },
+  {
+    "id": "prod_081",
+    "name": "Sugar-Free Basbousa 300g",
+    "category": "sweets",
+    "price": 133,
+    "tags": [
+      "artisan",
+      "sugar_free"
+    ]
+  },
+  {
+    "id": "prod_082",
+    "name": "Chocolate Hazelnut Spread 200g",
+    "category": "chocolate",
+    "price": 187,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_083",
+    "name": "Eid Celebration Deluxe Gift Box",
+    "category": "bundles",
+    "price": 1283,
+    "tags": [
+      "artisan",
+      "ramadan_special",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_084",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_050",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_028",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_076",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_084",
+    "name": "Ramadan Mixed Sweets Assortment 600g",
+    "category": "sweets",
+    "price": 543,
+    "tags": [
+      "artisan",
+      "ramadan_special",
+      "gift_friendly"
+    ]
+  },
+  {
+    "id": "prod_085",
+    "name": "Basmati Rice 1kg",
+    "category": "rice",
+    "price": 93,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_086",
+    "name": "Ras El Hanout 100g",
+    "category": "spices",
+    "price": 93,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_087",
+    "name": "Greek Yogurt 500g",
+    "category": "dairy",
+    "price": 70,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_088",
+    "name": "Brown Rice Organic 1kg",
+    "category": "rice",
+    "price": 127,
+    "tags": [
+      "organic"
+    ]
+  },
+  {
+    "id": "prod_089",
+    "name": "Ground Beef Frozen 500g",
+    "category": "frozen",
+    "price": 197,
+    "tags": []
+  },
+  {
+    "id": "prod_090",
+    "name": "Mango Juice 1L",
+    "category": "beverages",
+    "price": 59,
+    "tags": []
+  },
+  {
+    "id": "prod_091",
+    "name": "Artisan Sourdough Loaf",
+    "category": "bread",
+    "price": 97,
+    "tags": [
+      "artisan",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_092",
+    "name": "Toilet Paper 12-roll",
+    "category": "household_basics",
+    "price": 149,
+    "tags": [
+      "bulk_pack",
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_093",
+    "name": "Egyptian Short-Grain Rice 5kg",
+    "category": "rice",
+    "price": 175,
+    "tags": [
+      "economy",
+      "bulk_pack"
+    ]
+  },
+  {
+    "id": "prod_094",
+    "name": "Healthy Snacker Discovery Box",
+    "category": "bundles",
+    "price": 583,
+    "tags": [
+      "artisan",
+      "sugar_free",
+      "gift_friendly"
+    ],
+    "contents": [
+      {
+        "product_id": "prod_102",
+        "quantity": 2
+      },
+      {
+        "product_id": "prod_016",
+        "quantity": 1
+      },
+      {
+        "product_id": "prod_072",
+        "quantity": 1
+      }
+    ]
+  },
+  {
+    "id": "prod_095",
+    "name": "Whole Wheat Bread Loaf",
+    "category": "bread",
+    "price": 30,
+    "tags": []
+  },
+  {
+    "id": "prod_096",
+    "name": "Basmati Rice 5kg",
+    "category": "rice",
+    "price": 437,
+    "tags": [
+      "bestseller",
+      "bulk_pack"
+    ]
+  },
+  {
+    "id": "prod_097",
+    "name": "Egyptian Cookies Tin 400g",
+    "category": "snacks",
+    "price": 163,
+    "tags": [
+      "gift_friendly"
+    ]
+  },
+  {
+    "id": "prod_098",
+    "name": "Spaghetti 500g",
+    "category": "pasta",
+    "price": 27,
+    "tags": [
+      "economy"
+    ]
+  },
+  {
+    "id": "prod_099",
+    "name": "Pomegranate Molasses 250ml",
+    "category": "spices",
+    "price": 183,
+    "tags": [
+      "single_origin",
+      "ramadan_special"
+    ]
+  },
+  {
+    "id": "prod_100",
+    "name": "Extra Virgin Olive Oil 500ml",
+    "category": "oils",
+    "price": 281,
+    "tags": [
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_101",
+    "name": "Ceylon Black Tea Loose Leaf 100g",
+    "category": "tea",
+    "price": 147,
+    "tags": [
+      "artisan",
+      "single_origin"
+    ]
+  },
+  {
+    "id": "prod_102",
+    "name": "Date and Almond Energy Balls 200g",
+    "category": "sweets",
+    "price": 167,
+    "tags": [
+      "artisan",
+      "sugar_free",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_103",
+    "name": "Mixed Olives Premium 500g",
+    "category": "snacks",
+    "price": 130,
+    "tags": [
+      "artisan"
+    ]
+  },
+  {
+    "id": "prod_104",
+    "name": "Fayoum Orange Blossom Honey 500g",
+    "category": "honey",
+    "price": 419,
+    "tags": [
+      "artisan",
+      "single_origin",
+      "bestseller"
+    ]
+  },
+  {
+    "id": "prod_105",
+    "name": "White Sugar 1kg",
+    "category": "sugar",
+    "price": 30,
+    "tags": [
+      "economy"
+    ]
+  }
+]
