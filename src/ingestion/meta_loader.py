@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from io_utils import load_json, validate_enum
+from src.ingestion.io_utils import load_json, validate_enum
 
 KNOWN_OPTIMIZATION_GOALS = {"CONVERSATIONS", "REACH"}
 
