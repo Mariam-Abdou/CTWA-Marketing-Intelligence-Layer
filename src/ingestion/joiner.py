@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from conversation_loader import Conversation, load_conversations
-from meta_loader import Ad, Adset, Campaign, MetaData, load_meta
+from src.ingestion.conversation_loader import Conversation, load_conversations
+from src.ingestion.meta_loader import Ad, Adset, Campaign, MetaData, load_meta
 
 
 @dataclass
