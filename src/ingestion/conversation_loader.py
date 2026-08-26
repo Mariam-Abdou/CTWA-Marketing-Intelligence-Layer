@@ -1,13 +1,13 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from io_utils import load_json, validate_enum
+from src.ingestion.io_utils import load_json, validate_enum
 
 KNOWN_OUTCOME_TYPES = {
     "delivered", "ghosted", "cancelled", "refunded",
     "active", "stuck_pending", "adversarial",
 }
-KNOWN_PLATFORMS = {"meta_ctwa", "organic", "direct"}
+PLATFORMS = {"meta_ctwa", "organic", "direct"}
 
 
 @dataclass
@@ -41,7 +41,7 @@ class Conversation:
 
 
 def _parse_source(raw: dict, conv_id: str) -> ConversationSource:
-    validate_enum(raw.get("platform"), KNOWN_PLATFORMS, "platform", conv_id)
+    validate_enum(raw.get("platform"), PLATFORMS, "platform", conv_id)
     return ConversationSource(
         platform=raw["platform"],
         ctwa_clid=raw.get("ctwa_clid"),
