@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 
-from ..classification.classifier import classify
+from .classifier import classify
 from ..ingestion.joiner import JoinedConversation
 
 
