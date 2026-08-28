@@ -2,11 +2,14 @@ from dataclasses import dataclass
 
 from ..ingestion.conversation_loader import Conversation
 
+SUCCESS_THRESHOLD = 0.5
+
 
 @dataclass
 class ClassificationResult:
     conversation_id: str
-    value: float | None  # None = excluded from scoring; else 0.0-1.0, raw (not thresholded)
+    value: float | None
+    success: bool | None
 
 
 def classify(conversation: Conversation) -> ClassificationResult:
@@ -24,7 +27,8 @@ def classify(conversation: Conversation) -> ClassificationResult:
     else:
         value = None
 
-    return ClassificationResult(conversation_id=conversation.id, value=value)
+    success = value >= SUCCESS_THRESHOLD if value is not None else None
+    return ClassificationResult(conversation_id=conversation.id, value=value, success=success)
 
 
 if __name__ == "__main__":
@@ -33,9 +37,5 @@ if __name__ == "__main__":
     convs = load_conversations("data/train.json")
     results = [classify(c) for c in convs]
 
-    scoreable_values = [r.value for r in results if r.value is not None]
-    excluded = len(results) - len(scoreable_values)
-    raw_rate = sum(scoreable_values) / len(scoreable_values)
-
-    print(f"Total: {len(results)}, excluded: {excluded}, scoreable: {len(scoreable_values)}")
-    print(f"Raw score (sum/n): {raw_rate:.4f}")
+    scoreable = [r for r in results if r.success is not None]
+    print(f"Total: {len(results)}, excluded: {len(results) - len(scoreable)}, scoreable: {len(scoreable)}")
