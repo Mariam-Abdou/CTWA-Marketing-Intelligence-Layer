@@ -24,18 +24,23 @@ class Posterior:
     alpha_post: float
     beta_post: float
     precision: float
-    n: int
 
 
-def _build_posterior(alpha_post: float, beta_post: float, n: int) -> Posterior:
+def _build_posterior(alpha_post: float, beta_post: float) -> Posterior:
     score = alpha_post / (alpha_post + beta_post)
     lower_q = (1 - CREDIBLE_INTERVAL) / 2
     interval_low = beta_dist.ppf(lower_q, alpha_post, beta_post)
     interval_high = beta_dist.ppf(1 - lower_q, alpha_post, beta_post)
-    precision = 1 - (interval_high - interval_low)
+
+    # Precision = inverse variance of the Beta posterior
+    # Grows with prior_strength and n (alpha_post + beta_post)
+    variance = (alpha_post * beta_post) / (
+        (alpha_post + beta_post) ** 2 * (alpha_post + beta_post + 1)
+    )
+    precision = 1 / variance
 
     return Posterior(score=score, interval_low=interval_low, interval_high=interval_high,
-                      alpha_post=alpha_post, beta_post=beta_post, precision=precision, n=n)
+                      alpha_post=alpha_post, beta_post=beta_post, precision=precision)
 
 
 def compute_top_level_posterior(item: RawCounts) -> Posterior | None:
@@ -44,7 +49,7 @@ def compute_top_level_posterior(item: RawCounts) -> Posterior | None:
 
     alpha_post = UNINFORMATIVE_ALPHA + item.successes
     beta_post = UNINFORMATIVE_BETA + item.failures
-    return _build_posterior(alpha_post, beta_post, item.n)
+    return _build_posterior(alpha_post, beta_post)
 
 
 def compute_posterior(child: RawCounts, parent_rate: float, prior_strength: float) -> Posterior | None:
@@ -56,7 +61,7 @@ def compute_posterior(child: RawCounts, parent_rate: float, prior_strength: floa
 
     alpha_post = alpha_prior + child.successes
     beta_post = beta_prior + child.failures
-    return _build_posterior(alpha_post, beta_post, child.n)
+    return _build_posterior(alpha_post, beta_post)
 
 
 if __name__ == "__main__":
