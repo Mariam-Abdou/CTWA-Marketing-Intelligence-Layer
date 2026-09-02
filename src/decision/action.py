@@ -5,7 +5,7 @@ from scipy.stats import beta as beta_dist
 from ..scoring.corrector import Posterior
 
 # Temporary threshold. We will tune this using validation later.
-PROBABILITY_THRESHOLD = 0.70
+PROBABILITY_THRESHOLD = 0.75
 
 
 def _probabilities_against_baseline(posterior: Posterior, baseline: float) -> tuple[float, float]:
