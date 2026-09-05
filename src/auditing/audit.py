@@ -12,6 +12,7 @@ from ..ingestion.conversation_loader import load_conversations
 from ..ingestion.meta_loader import load_meta
 from ..ingestion.joiner import join_conversations_to_meta
 from ..scoring.revenue import revenue_totals
+from ..scoring.corrector import PRIOR_STRENGTH
 
 
 def spend_totals(meta) -> tuple[dict, dict, dict]:
@@ -41,6 +42,27 @@ def build_roas_rows(revenue_by_id: dict, spend_by_id: dict) -> list[dict]:
         })
     rows.sort(key=lambda r: -(r["roas"] or 0))
     return rows
+
+
+def shrunk_roas_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: float = PRIOR_STRENGTH) -> dict[str, float]:
+    # Bayesian average (same shrinkage idea as corrector.py's PRIOR_STRENGTH):
+    # regularizes small-sample ROAS toward the portfolio-wide mean so a
+    # handful of orders can't swing the signal to an extreme value.
+    raw = {}
+    for id_, rev in revenue_by_id.items():
+        spend = spend_by_id.get(id_)
+        raw[id_] = rev.total_revenue / spend if spend else None
+
+    known = [v for v in raw.values() if v is not None]
+    prior_mean = sum(known) / len(known) if known else 0.0
+
+    return {
+        id_: (
+            prior_mean if raw[id_] is None
+            else (prior_strength * prior_mean + rev.n * raw[id_]) / (prior_strength + rev.n)
+        )
+        for id_, rev in revenue_by_id.items()
+    }
 
 
 def print_roas(label, rows):

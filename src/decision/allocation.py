@@ -31,7 +31,7 @@ class ExploitAllocation:
     id: str
     action: str
     weight: float
-    budget: float
+    share: float  # fraction of total budget
     p_better: float
     p_worse: float
 
@@ -42,7 +42,7 @@ class ExploreExperiment:
     name: str
     hypothesis: str
     stop_rule: str
-    budget: float
+    share: float  # fraction of total budget
     p_better: float
     p_worse: float
     precision: float
@@ -50,7 +50,6 @@ class ExploreExperiment:
 
 @dataclass
 class AllocationPlan:
-    total_budget: float
     exploit: list[ExploitAllocation] = field(default_factory=list)
     explore: list[ExploreExperiment] = field(default_factory=list)
     fatigued: list[str] = field(default_factory=list)
@@ -96,9 +95,14 @@ def _build_stop_rule() -> str:
 def build_allocation_plan(
     posteriors: dict[str, Posterior | None],
     get_baseline,
-    total_budget: float,
     daily_insights_by_ad: dict[str, list[DailyInsight]] | None = None,
+    shrunk_roas: dict[str, float] | None = None,
 ) -> AllocationPlan:
+    # no ROAS signal yet for this id (or dict not passed at all): 1.0 is
+    # neutral under multiplication, i.e. falls back to p_better/ambiguity alone.
+    def _roas(id_: str) -> float:
+        return (shrunk_roas or {}).get(id_, 1.0)
+
     scale_candidates: list[tuple[str, Posterior, float, float]] = []
     kill_candidates: list[tuple[str, Posterior, float, float]] = []
     explore_candidates: list[tuple[str, Posterior | None, float, float, float]] = []
@@ -125,19 +129,19 @@ def build_allocation_plan(
         else:
             explore_candidates.append((id_, posterior, baseline, p_better, p_worse))
 
-    plan = AllocationPlan(total_budget=total_budget)
+    plan = AllocationPlan()
     plan.fatigued = [id_ for id_, *_ in fatigued_candidates]
     plan.warned = warned_ids
 
-    exploit_budget = total_budget * EXPLOIT_SHARE
-    total_weight = sum(p_better for _, _, p_better, _ in scale_candidates)
+    exploit_scores = {id_: p_better * _roas(id_) for id_, _, p_better, _ in scale_candidates}
+    total_weight = sum(exploit_scores.values())
 
     for id_, posterior, p_better, p_worse in scale_candidates:
-        weight = p_better / total_weight if total_weight else 0.0
+        weight = exploit_scores[id_] / total_weight if total_weight else 0.0
         plan.exploit.append(
             ExploitAllocation(
                 id=id_, action="scale", weight=weight,
-                budget=weight * exploit_budget,
+                share=weight * EXPLOIT_SHARE,
                 p_better=p_better, p_worse=p_worse,
             )
         )
@@ -145,30 +149,31 @@ def build_allocation_plan(
     for id_, posterior, p_better, p_worse in kill_candidates:
         plan.exploit.append(
             ExploitAllocation(
-                id=id_, action="kill", weight=0.0, budget=0.0,
+                id=id_, action="kill", weight=0.0, share=0.0,
                 p_better=p_better, p_worse=p_worse,
             )
         )
 
-    # Most ambiguous first: no data at all is maximally ambiguous;
-    # otherwise, the closer p_better and p_worse are, the less resolved
-    # the decision is, and the more a test would actually teach us.
+    # Most ambiguous first, scaled by ROAS: no data at all is maximally
+    # ambiguous; otherwise, the closer p_better and p_worse are, the less
+    # resolved the decision is. Multiplying by shrunk ROAS means that among
+    # equally ambiguous candidates, the one with the more promising Meta
+    # efficiency signal is tested first.
     # Fatigued items are excluded from this ranking/cap: they aren't here
     # because the decision is ambiguous (it isn't - it's a confident
     # "scale"), they're here because the fatigue guardrail vetoed funding
     # it. They'd otherwise look "unambiguous" and get pushed out by
     # MAX_EXPLORE_TESTS, silently losing their explore slot and budget.
     def _ambiguity(candidate: tuple) -> float:
-        posterior, p_better, p_worse = candidate[1], candidate[3], candidate[4]
+        id_, posterior, p_better, p_worse = candidate[0], candidate[1], candidate[3], candidate[4]
         if posterior is None:
-            return 1.0
-        return 1 - abs(p_better - p_worse)
+            return 1.0 * _roas(id_)
+        return (1 - abs(p_better - p_worse)) * _roas(id_)
 
     explore_candidates = sorted(explore_candidates, key=_ambiguity, reverse=True)[:MAX_EXPLORE_TESTS]
 
-    explore_budget = total_budget * EXPLORE_SHARE
     all_explore_items = explore_candidates + fatigued_candidates
-    per_experiment_budget = explore_budget / len(all_explore_items) if all_explore_items else 0.0
+    per_experiment_share = EXPLORE_SHARE / len(all_explore_items) if all_explore_items else 0.0
 
     for id_, posterior, baseline, p_better, p_worse in explore_candidates:
         if posterior is None:
@@ -177,7 +182,7 @@ def build_allocation_plan(
                     id=id_, name=f"test_{id_}",
                     hypothesis=f"{id_} has no data yet; true rate relative to baseline {baseline:.3f} is unknown.",
                     stop_rule=_build_stop_rule(),
-                    budget=per_experiment_budget,
+                    share=per_experiment_share,
                     p_better=0.0, p_worse=0.0, precision=0.0,
                 )
             )
@@ -188,7 +193,7 @@ def build_allocation_plan(
                 id=id_, name=f"test_{id_}",
                 hypothesis=_build_hypothesis(id_, posterior, baseline, p_better, p_worse),
                 stop_rule=_build_stop_rule(),
-                budget=per_experiment_budget,
+                share=per_experiment_share,
                 p_better=p_better, p_worse=p_worse, precision=posterior.precision,
             )
         )
@@ -204,7 +209,7 @@ def build_allocation_plan(
                     f"{FATIGUE_CTR_DROP_THRESHOLD:.0%} vs its own first week."
                 ),
                 stop_rule=_build_stop_rule(),
-                budget=per_experiment_budget,
+                share=per_experiment_share,
                 p_better=p_better, p_worse=p_worse, precision=posterior.precision,
             )
         )
@@ -213,9 +218,8 @@ def build_allocation_plan(
 
 
 def print_plan(plan: AllocationPlan) -> None:
-    print(f"Total budget: {plan.total_budget:.2f}")
-    print(f"Exploit ({EXPLOIT_SHARE:.0%}): {plan.total_budget * EXPLOIT_SHARE:.2f}")
-    print(f"Explore ({EXPLORE_SHARE:.0%}): {plan.total_budget * EXPLORE_SHARE:.2f}\n")
+    print(f"Exploit ({EXPLOIT_SHARE:.0%} of budget)")
+    print(f"Explore ({EXPLORE_SHARE:.0%} of budget)\n")
 
     if plan.warned:
         print(
@@ -224,16 +228,16 @@ def print_plan(plan: AllocationPlan) -> None:
         )
 
     print("--- Exploit ---")
-    for a in sorted(plan.exploit, key=lambda a: a.budget, reverse=True):
+    for a in sorted(plan.exploit, key=lambda a: a.share, reverse=True):
         print(
-            f"{a.id}: {a.action}, budget={a.budget:.2f}, "
+            f"{a.id}: {a.action}, share={a.share:.1%}, "
             f"P(better)={a.p_better:.4f}, P(worse)={a.p_worse:.4f}"
         )
 
     print("\n--- Explore ---")
     for e in plan.explore:
         flag = " [fatigue-vetoed scale]" if e.id in plan.fatigued else ""
-        print(f"{e.name} ({e.id}){flag}: budget={e.budget:.2f}")
+        print(f"{e.name} ({e.id}){flag}: share={e.share:.1%}")
         print(f"  hypothesis: {e.hypothesis}")
         print(f"  stop_rule: {e.stop_rule}")
 
@@ -244,6 +248,8 @@ if __name__ == "__main__":
     from ..ingestion.joiner import join_conversations_to_meta
     from ..scoring.aggregator import raw_rates
     from ..scoring.corrector import PRIOR_STRENGTH, compute_posterior, compute_top_level_posterior
+    from ..scoring.revenue import revenue_totals
+    from ..auditing.audit import spend_totals, shrunk_roas_by_id
 
     convs = load_conversations("data/train/train.json")
     meta = load_meta("data/train/meta_train.json")
@@ -275,14 +281,16 @@ if __name__ == "__main__":
     total_n = total_successes + total_failures
     overall_baseline = total_successes / total_n if total_n else 0.5
 
-    # TODO: replace with the real budget source (Ads API / config / user input).
-    # This is a placeholder so the script is runnable end-to-end.
-    TOTAL_BUDGET = 10000.0
+    ad_revenue, adset_revenue, campaign_revenue = revenue_totals(joined)
+    ad_spend, adset_spend, campaign_spend = spend_totals(meta)
+    campaign_roas = shrunk_roas_by_id(campaign_revenue, campaign_spend)
+    adset_roas = shrunk_roas_by_id(adset_revenue, adset_spend)
+    ad_roas = shrunk_roas_by_id(ad_revenue, ad_spend)
 
     campaign_plan = build_allocation_plan(
         campaign_posteriors,
         get_baseline=lambda cid: overall_baseline,
-        total_budget=TOTAL_BUDGET,
+        shrunk_roas=campaign_roas,
     )
     print("=== Campaigns ===")
     print_plan(campaign_plan)
@@ -293,7 +301,7 @@ if __name__ == "__main__":
             campaign_posteriors[adset_to_campaign[aid]].score
             if campaign_posteriors[adset_to_campaign[aid]] else 0.5
         ),
-        total_budget=TOTAL_BUDGET,
+        shrunk_roas=adset_roas,
     )
     print("\n=== Adsets ===")
     print_plan(adset_plan)
@@ -304,8 +312,8 @@ if __name__ == "__main__":
             adset_posteriors[ad_to_adset[aid]].score
             if adset_posteriors[ad_to_adset[aid]] else 0.5
         ),
-        total_budget=TOTAL_BUDGET,
         daily_insights_by_ad=insights_by_ad(meta),
+        shrunk_roas=ad_roas,
     )
     print("\n=== Ads ===")
     print_plan(ad_plan)
