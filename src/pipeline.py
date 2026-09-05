@@ -3,10 +3,12 @@ Full pipeline: Classifier -> Aggregator -> Score Corrector -> Action -> Allocati
 Runs on all campaigns, adsets, and ads and prints one ordered scoreboard per level:
 raw rate, corrected score, interval, decision, and bucket - with explore test
 details (hypothesis/stop_rule) listed separately below each scoreboard.
-Also saves the full result (all levels) to scoreboard_v1.csv.
+Also saves the full result (all levels) to a timestamped CSV under
+outputs/, so re-running never overwrites a previous run's file.
 """
 
 import csv
+from datetime import datetime
 
 from src.ingestion.conversation_loader import load_conversations
 from src.ingestion.meta_loader import load_meta
@@ -20,7 +22,7 @@ from src.decision.allocation import build_allocation_plan
 # still a placeholder pending that decision.
 TOTAL_BUDGET = 10000.0
 
-OUTPUT_FILE = "outputs/scoreboard_v1.csv"
+OUTPUT_FILE = f"outputs/scoreboard_{datetime.now():%Y%m%d_%H%M%S}.csv"
 CSV_FIELDS = [
     "level", "id", "raw_rate", "score", "interval_low", "interval_high",
     "action", "bucket", "hypothesis", "stop_rule",
@@ -114,8 +116,8 @@ def write_csv(path, level_rows):
 
 
 if __name__ == "__main__":
-    convs = load_conversations("data/train.json")
-    meta = load_meta("data/meta_data.json")
+    convs = load_conversations("data/train/train.json")
+    meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 
     ad_rates, adset_rates, campaign_rates = raw_rates(joined)

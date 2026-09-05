@@ -43,8 +43,8 @@ if __name__ == "__main__":
     from ..ingestion.meta_loader import load_meta
     from ..ingestion.joiner import join_conversations_to_meta
 
-    convs = load_conversations("data/train.json")
-    meta = load_meta("data/meta_data.json")
+    convs = load_conversations("data/train/train.json")
+    meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 
     ad_revenue, adset_revenue, campaign_revenue = revenue_totals(joined)
