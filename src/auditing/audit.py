@@ -65,6 +65,12 @@ def shrunk_roas_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: fl
     }
 
 
+def baseline_cpa(revenue_by_id: dict, spend_by_id: dict) -> float | None:
+    total_spend = sum(spend_by_id.get(id_, 0.0) for id_ in revenue_by_id)
+    total_orders = sum(rev.n for rev in revenue_by_id.values())
+    return total_spend / total_orders if total_orders else None
+
+
 def print_roas(label, rows):
     print(f"--- {label} ---")
     for r in rows:

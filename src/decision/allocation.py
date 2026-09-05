@@ -1,12 +1,15 @@
 from dataclasses import dataclass, field
 
 from .action import (
+    CPA_STOP_MULTIPLIER,
     FATIGUE_CTR_DROP_THRESHOLD,
     FATIGUE_FREQUENCY_THRESHOLD,
+    MIN_SPEND_MULTIPLIER,
     PROBABILITY_THRESHOLD,
     _probabilities_against_baseline,
     frequency_warning,
     is_fatigued,
+    is_underperforming,
 )
 from ..ingestion.meta_loader import DailyInsight
 from ..scoring.corrector import Posterior
@@ -14,15 +17,13 @@ from ..scoring.corrector import Posterior
 EXPLOIT_SHARE = 0.70
 EXPLORE_SHARE = 0.30
 
-# Below this, we don't trust the posterior enough to size an exploit bet
-# on it, even if it happened to land on the scale/kill side.
+# Below this, we don't trust the posterior enough to size an exploit bet on it
 MIN_PRECISION_FOR_EXPLOIT = 5.0
 
 STOP_RULE_MIN_IMPRESSIONS = 1000
 STOP_RULE_MAX_DAYS = 7
 STOP_RULE_CONFIDENCE = 0.90
 
-# Requirement: explore is 2-3 specific tests per run, not "every hold item".
 MAX_EXPLORE_TESTS = 3
 
 
@@ -31,7 +32,7 @@ class ExploitAllocation:
     id: str
     action: str
     weight: float
-    share: float  # fraction of total budget
+    budget_share: float
     p_better: float
     p_worse: float
 
@@ -42,7 +43,7 @@ class ExploreExperiment:
     name: str
     hypothesis: str
     stop_rule: str
-    share: float  # fraction of total budget
+    budget_share: float
     p_better: float
     p_worse: float
     precision: float
@@ -53,7 +54,8 @@ class AllocationPlan:
     exploit: list[ExploitAllocation] = field(default_factory=list)
     explore: list[ExploreExperiment] = field(default_factory=list)
     fatigued: list[str] = field(default_factory=list)
-    warned: list[str] = field(default_factory=list)  # advisory only, no routing effect
+    underperforming: list[str] = field(default_factory=list)
+    warned: list[str] = field(default_factory=list)
 
 
 def _classify(
@@ -97,9 +99,10 @@ def build_allocation_plan(
     get_baseline,
     daily_insights_by_ad: dict[str, list[DailyInsight]] | None = None,
     shrunk_roas: dict[str, float] | None = None,
+    spend_and_orders: dict[str, tuple[float, int]] | None = None,
+    baseline_cpa: float | None = None,
 ) -> AllocationPlan:
-    # no ROAS signal yet for this id (or dict not passed at all): 1.0 is
-    # neutral under multiplication, i.e. falls back to p_better/ambiguity alone.
+    # no ROAS signal yet for this id, falls back to p_better/priority alone.
     def _roas(id_: str) -> float:
         return (shrunk_roas or {}).get(id_, 1.0)
 
@@ -107,6 +110,7 @@ def build_allocation_plan(
     kill_candidates: list[tuple[str, Posterior, float, float]] = []
     explore_candidates: list[tuple[str, Posterior | None, float, float, float]] = []
     fatigued_candidates: list[tuple[str, Posterior, float, float, float]] = []
+    underperforming_candidates: list[tuple[str, Posterior, float, float, float]] = []
 
     warned_ids: list[str] = []
 
@@ -122,6 +126,12 @@ def build_allocation_plan(
             if frequency_warning(insights):
                 warned_ids.append(id_)
 
+        if action == "scale" and spend_and_orders is not None:
+            spend, orders = spend_and_orders.get(id_, (None, 0))
+            if is_underperforming(spend, orders, baseline_cpa):
+                underperforming_candidates.append((id_, posterior, baseline, p_better, p_worse))
+                continue
+
         if action == "scale":
             scale_candidates.append((id_, posterior, p_better, p_worse))
         elif action == "kill":
@@ -131,6 +141,7 @@ def build_allocation_plan(
 
     plan = AllocationPlan()
     plan.fatigued = [id_ for id_, *_ in fatigued_candidates]
+    plan.underperforming = [id_ for id_, *_ in underperforming_candidates]
     plan.warned = warned_ids
 
     exploit_scores = {id_: p_better * _roas(id_) for id_, _, p_better, _ in scale_candidates}
@@ -141,7 +152,7 @@ def build_allocation_plan(
         plan.exploit.append(
             ExploitAllocation(
                 id=id_, action="scale", weight=weight,
-                share=weight * EXPLOIT_SHARE,
+                budget_share=weight * EXPLOIT_SHARE,
                 p_better=p_better, p_worse=p_worse,
             )
         )
@@ -149,30 +160,20 @@ def build_allocation_plan(
     for id_, posterior, p_better, p_worse in kill_candidates:
         plan.exploit.append(
             ExploitAllocation(
-                id=id_, action="kill", weight=0.0, share=0.0,
+                id=id_, action="kill", weight=0.0, budget_share=0.0,
                 p_better=p_better, p_worse=p_worse,
             )
         )
 
-    # Most ambiguous first, scaled by ROAS: no data at all is maximally
-    # ambiguous; otherwise, the closer p_better and p_worse are, the less
-    # resolved the decision is. Multiplying by shrunk ROAS means that among
-    # equally ambiguous candidates, the one with the more promising Meta
-    # efficiency signal is tested first.
-    # Fatigued items are excluded from this ranking/cap: they aren't here
-    # because the decision is ambiguous (it isn't - it's a confident
-    # "scale"), they're here because the fatigue guardrail vetoed funding
-    # it. They'd otherwise look "unambiguous" and get pushed out by
-    # MAX_EXPLORE_TESTS, silently losing their explore slot and budget.
-    def _ambiguity(candidate: tuple) -> float:
-        id_, posterior, p_better, p_worse = candidate[0], candidate[1], candidate[3], candidate[4]
+    def _priority(candidate: tuple) -> float:
+        id_, posterior = candidate[0], candidate[1]
         if posterior is None:
             return 1.0 * _roas(id_)
-        return (1 - abs(p_better - p_worse)) * _roas(id_)
+        return posterior.interval_high * _roas(id_)
 
-    explore_candidates = sorted(explore_candidates, key=_ambiguity, reverse=True)[:MAX_EXPLORE_TESTS]
+    explore_candidates = sorted(explore_candidates, key=_priority, reverse=True)[:MAX_EXPLORE_TESTS]
 
-    all_explore_items = explore_candidates + fatigued_candidates
+    all_explore_items = explore_candidates + fatigued_candidates + underperforming_candidates
     per_experiment_share = EXPLORE_SHARE / len(all_explore_items) if all_explore_items else 0.0
 
     for id_, posterior, baseline, p_better, p_worse in explore_candidates:
@@ -182,7 +183,7 @@ def build_allocation_plan(
                     id=id_, name=f"test_{id_}",
                     hypothesis=f"{id_} has no data yet; true rate relative to baseline {baseline:.3f} is unknown.",
                     stop_rule=_build_stop_rule(),
-                    share=per_experiment_share,
+                    budget_share=per_experiment_share,
                     p_better=0.0, p_worse=0.0, precision=0.0,
                 )
             )
@@ -193,7 +194,7 @@ def build_allocation_plan(
                 id=id_, name=f"test_{id_}",
                 hypothesis=_build_hypothesis(id_, posterior, baseline, p_better, p_worse),
                 stop_rule=_build_stop_rule(),
-                share=per_experiment_share,
+                budget_share=per_experiment_share,
                 p_better=p_better, p_worse=p_worse, precision=posterior.precision,
             )
         )
@@ -209,7 +210,26 @@ def build_allocation_plan(
                     f"{FATIGUE_CTR_DROP_THRESHOLD:.0%} vs its own first week."
                 ),
                 stop_rule=_build_stop_rule(),
-                share=per_experiment_share,
+                budget_share=per_experiment_share,
+                p_better=p_better, p_worse=p_worse, precision=posterior.precision,
+            )
+        )
+
+    for id_, posterior, baseline, p_better, p_worse in underperforming_candidates:
+        spend, orders = spend_and_orders.get(id_, (None, 0))
+        cpa = f"{spend / orders:.2f}" if orders else "undefined (0 orders)"
+        plan.explore.append(
+            ExploreExperiment(
+                id=id_, name=f"test_{id_}",
+                hypothesis=(
+                    f"{id_} would qualify for scale (P(better)={p_better:.0%} vs baseline "
+                    f"{baseline:.3f}), but is held back by the CPA stop-rule guardrail: "
+                    f"CPA={cpa} vs baseline CPA {baseline_cpa:.2f} "
+                    f"(stop threshold {CPA_STOP_MULTIPLIER}x after spend >= "
+                    f"{MIN_SPEND_MULTIPLIER}x baseline CPA)."
+                ),
+                stop_rule=_build_stop_rule(),
+                budget_share=per_experiment_share,
                 p_better=p_better, p_worse=p_worse, precision=posterior.precision,
             )
         )
@@ -228,16 +248,20 @@ def print_plan(plan: AllocationPlan) -> None:
         )
 
     print("--- Exploit ---")
-    for a in sorted(plan.exploit, key=lambda a: a.share, reverse=True):
+    for a in sorted(plan.exploit, key=lambda a: a.budget_share, reverse=True):
         print(
-            f"{a.id}: {a.action}, share={a.share:.1%}, "
+            f"{a.id}: {a.action}, budget_share={a.budget_share:.1%}, "
             f"P(better)={a.p_better:.4f}, P(worse)={a.p_worse:.4f}"
         )
 
     print("\n--- Explore ---")
     for e in plan.explore:
-        flag = " [fatigue-vetoed scale]" if e.id in plan.fatigued else ""
-        print(f"{e.name} ({e.id}){flag}: share={e.share:.1%}")
+        flag = ""
+        if e.id in plan.fatigued:
+            flag = " [fatigue-vetoed scale]"
+        elif e.id in plan.underperforming:
+            flag = " [CPA-vetoed scale]"
+        print(f"{e.name} ({e.id}){flag}: budget_share={e.budget_share:.1%}")
         print(f"  hypothesis: {e.hypothesis}")
         print(f"  stop_rule: {e.stop_rule}")
 
@@ -249,7 +273,7 @@ if __name__ == "__main__":
     from ..scoring.aggregator import raw_rates
     from ..scoring.corrector import PRIOR_STRENGTH, compute_posterior, compute_top_level_posterior
     from ..scoring.revenue import revenue_totals
-    from ..auditing.audit import spend_totals, shrunk_roas_by_id
+    from ..auditing.audit import spend_totals, shrunk_roas_by_id, baseline_cpa as compute_baseline_cpa
 
     convs = load_conversations("data/train/train.json")
     meta = load_meta("data/train/meta_train.json")
@@ -287,10 +311,20 @@ if __name__ == "__main__":
     adset_roas = shrunk_roas_by_id(adset_revenue, adset_spend)
     ad_roas = shrunk_roas_by_id(ad_revenue, ad_spend)
 
+    campaign_cpa_inputs = {id_: (campaign_spend.get(id_), rev.n) for id_, rev in campaign_revenue.items()}
+    adset_cpa_inputs = {id_: (adset_spend.get(id_), rev.n) for id_, rev in adset_revenue.items()}
+    ad_cpa_inputs = {id_: (ad_spend.get(id_), rev.n) for id_, rev in ad_revenue.items()}
+
+    campaign_baseline_cpa = compute_baseline_cpa(campaign_revenue, campaign_spend)
+    adset_baseline_cpa = compute_baseline_cpa(adset_revenue, adset_spend)
+    ad_baseline_cpa = compute_baseline_cpa(ad_revenue, ad_spend)
+
     campaign_plan = build_allocation_plan(
         campaign_posteriors,
         get_baseline=lambda cid: overall_baseline,
         shrunk_roas=campaign_roas,
+        spend_and_orders=campaign_cpa_inputs,
+        baseline_cpa=campaign_baseline_cpa,
     )
     print("=== Campaigns ===")
     print_plan(campaign_plan)
@@ -302,6 +336,8 @@ if __name__ == "__main__":
             if campaign_posteriors[adset_to_campaign[aid]] else 0.5
         ),
         shrunk_roas=adset_roas,
+        spend_and_orders=adset_cpa_inputs,
+        baseline_cpa=adset_baseline_cpa,
     )
     print("\n=== Adsets ===")
     print_plan(adset_plan)
@@ -314,6 +350,8 @@ if __name__ == "__main__":
         ),
         daily_insights_by_ad=insights_by_ad(meta),
         shrunk_roas=ad_roas,
+        spend_and_orders=ad_cpa_inputs,
+        baseline_cpa=ad_baseline_cpa,
     )
     print("\n=== Ads ===")
     print_plan(ad_plan)
