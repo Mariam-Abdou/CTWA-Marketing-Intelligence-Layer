@@ -4,7 +4,7 @@ from ..ingestion.conversation_loader import Conversation
 from ..ingestion.io_utils import load_json
 from .amounts import get_outcome_amounts
 
-PRODUCTS_PATH = "data/products.json"
+PRODUCTS_PATH = "data/train/products.json"
 
 
 def _min_product_price(path: str = PRODUCTS_PATH) -> float:
@@ -31,7 +31,7 @@ def classify(conversation: Conversation, min_success_amount: float = MIN_SUCCESS
 if __name__ == "__main__":
     from ..ingestion.conversation_loader import load_conversations
 
-    convs = load_conversations("data/train.json")
+    convs = load_conversations("data/train/train.json")
     results = [classify(c) for c in convs]
 
     scoreable = [r for r in results if r.success is not None]
