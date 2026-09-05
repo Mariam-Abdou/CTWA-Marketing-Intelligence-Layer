@@ -1,55 +1,41 @@
-from dataclasses import dataclass
-
-from scipy.stats import beta as beta_dist
-
-from ..scoring.corrector import Posterior
-
-# Temporary threshold. We will tune this using validation later.
-PROBABILITY_THRESHOLD = 0.75
-
-
-def _probabilities_against_baseline(posterior: Posterior, baseline: float) -> tuple[float, float]:
-    p_better = 1 - beta_dist.cdf(baseline, posterior.alpha_post, posterior.beta_post)
-    p_worse = beta_dist.cdf(baseline, posterior.alpha_post, posterior.beta_post)
-    return p_better, p_worse
+from .conversation import PROBABILITY_THRESHOLD, _probabilities_against_baseline, decide, report
+from .meta import (
+    FATIGUE_CTR_DROP_THRESHOLD,
+    FATIGUE_FREQUENCY_THRESHOLD,
+    FATIGUE_MIN_DAYS_FOR_CTR_CHECK,
+    FATIGUE_WARNING_FREQUENCY_THRESHOLD,
+    FATIGUE_WINDOW_DAYS,
+    frequency_warning,
+    is_fatigued,
+)
 
 
-def decide(
-    posterior: Posterior,
-    baseline: float,
-    probability_threshold: float = PROBABILITY_THRESHOLD,
-) -> tuple[str, float, float]:
-    p_better, p_worse = _probabilities_against_baseline(posterior, baseline)
-
-    if p_better >= probability_threshold:
-        return "scale", p_better, p_worse
-    if p_worse >= probability_threshold:
-        return "kill", p_better, p_worse
-    return "hold", p_better, p_worse
-
-
-def report(label, posteriors, get_baseline):
-    print(f"--- {label} ---")
-    for id_ in sorted(posteriors.keys()):
-        posterior = posteriors[id_]
-        baseline = get_baseline(id_)
-        action, p_better, p_worse = decide(posterior, baseline)
-        print(
-            f"{id_}: score={posterior.score:.4f}, "
-            f"interval=[{posterior.interval_low:.4f}, {posterior.interval_high:.4f}], "
-            f"baseline={baseline:.4f}, P(better)={p_better:.4f}, P(worse)={p_worse:.4f}, -> {action}"
-        )
+def resolve_action(
+    raw_action: str,
+    *,
+    is_fatigued: bool = False,
+    precision_ok: bool = True,
+) -> str:
+    # decide() (conversation.py) and is_fatigued() (meta.py) stay untouched;
+    # guardrails here only push toward "hold", never create/upgrade a
+    # scale or kill.
+    if raw_action in ("scale", "kill") and not precision_ok:
+        return "hold"
+    if raw_action == "scale" and is_fatigued:
+        return "hold"
+    return raw_action
 
 
 if __name__ == "__main__":
+    from .allocation import MIN_PRECISION_FOR_EXPLOIT
     from ..ingestion.conversation_loader import load_conversations
-    from ..ingestion.meta_loader import load_meta
+    from ..ingestion.meta_loader import load_meta, insights_by_ad
     from ..ingestion.joiner import join_conversations_to_meta
     from ..scoring.aggregator import raw_rates
     from ..scoring.corrector import PRIOR_STRENGTH, compute_posterior, compute_top_level_posterior
 
-    convs = load_conversations("data/train.json")
-    meta = load_meta("data/meta_data.json")
+    convs = load_conversations("data/train/train.json")
+    meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 
     ad_rates, adset_rates, campaign_rates = raw_rates(joined)
@@ -88,3 +74,15 @@ if __name__ == "__main__":
     report("Adsets", adset_posteriors, lambda aid: campaign_posteriors[adset_to_campaign[aid]].score)
     print()
     report("Ads", ad_posteriors, lambda aid: adset_posteriors[ad_to_adset[aid]].score)
+
+    print("\n--- Ads (resolved) ---")
+    insights = insights_by_ad(meta)
+    for id_ in sorted(ad_posteriors.keys()):
+        posterior = ad_posteriors[id_]
+        baseline = adset_posteriors[ad_to_adset[id_]].score
+        raw_action, p_better, p_worse = decide(posterior, baseline)
+        fatigued = is_fatigued(insights.get(id_, []))
+        precision_ok = posterior.precision >= MIN_PRECISION_FOR_EXPLOIT
+        final_action = resolve_action(raw_action, is_fatigued=fatigued, precision_ok=precision_ok)
+        flag = " (overwritten)" if final_action != raw_action else ""
+        print(f"{id_}: raw={raw_action} -> final={final_action}{flag}")

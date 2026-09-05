@@ -48,8 +48,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--conversations", default="data/train.json")
-    parser.add_argument("--meta", default="data/meta_data.json")
+    parser.add_argument("--conversations", default="data/train/train.json")
+    parser.add_argument("--meta", default="data/train/meta_train.json")
     args = parser.parse_args()
 
     convs = load_conversations(args.conversations)

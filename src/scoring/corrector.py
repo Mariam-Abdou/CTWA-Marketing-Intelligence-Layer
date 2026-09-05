@@ -70,8 +70,8 @@ if __name__ == "__main__":
     from ..ingestion.joiner import join_conversations_to_meta
     from .aggregator import raw_rates
 
-    convs = load_conversations("data/train.json")
-    meta = load_meta("data/meta_data.json")
+    convs = load_conversations("data/train/train.json")
+    meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 
     ad_rates, adset_rates, campaign_rates = raw_rates(joined)

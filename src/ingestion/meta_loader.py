@@ -57,6 +57,8 @@ class DailyInsight:
     date_start: str
     impressions: int | None
     spend: float | None
+    frequency: float | None
+    ctr: float | None
     actions: list
 
 
@@ -111,6 +113,8 @@ def _parse_insight(r: dict) -> DailyInsight:
         date_start=r.get("date_start"),
         impressions=int(r["impressions"]) if r.get("impressions") is not None else None,
         spend=float(r["spend"]) if r.get("spend") is not None else None,
+        frequency=float(r["frequency"]) if r.get("frequency") is not None else None,
+        ctr=float(r["ctr"]) if r.get("ctr") is not None else None,
         actions=r.get("actions", []),
     )
 
@@ -126,8 +130,102 @@ def load_meta(path: str | Path) -> MetaData:
     )
 
 
+def insights_by_ad(meta: MetaData) -> dict[str, list[DailyInsight]]:
+    """Groups daily insights by ad_id, each list sorted chronologically."""
+    grouped: dict[str, list[DailyInsight]] = {}
+    for insight in meta.insights:
+        grouped.setdefault(insight.ad_id, []).append(insight)
+
+    for ad_id in grouped:
+        grouped[ad_id].sort(key=lambda i: i.date_start)
+
+    return grouped
+
+
+def _combine_daily(
+    insight_lists: list[list[DailyInsight]],
+    *,
+    ad_id: str = "",
+    adset_id: str = "",
+    campaign_id: str = "",
+) -> list[DailyInsight]:
+    by_date: dict[str, list[DailyInsight]] = {}
+    for lst in insight_lists:
+        for i in lst:
+            by_date.setdefault(i.date_start, []).append(i)
+
+    combined = []
+    for date in sorted(by_date):
+        day = by_date[date]
+
+        imp_values = [i.impressions for i in day if i.impressions is not None]
+        total_impressions = sum(imp_values) if imp_values else None
+
+        spend_values = [i.spend for i in day if i.spend is not None]
+        total_spend = sum(spend_values) if spend_values else None
+
+        freq_weight = sum(i.impressions or 0 for i in day if i.frequency is not None)
+        avg_frequency = (
+            sum((i.frequency or 0) * (i.impressions or 0) for i in day if i.frequency is not None) / freq_weight
+            if freq_weight else None
+        )
+
+        ctr_weight = sum(i.impressions or 0 for i in day if i.ctr is not None)
+        avg_ctr = (
+            sum((i.ctr or 0) * (i.impressions or 0) for i in day if i.ctr is not None) / ctr_weight
+            if ctr_weight else None
+        )
+
+        combined.append(DailyInsight(
+            ad_id=ad_id, adset_id=adset_id, campaign_id=campaign_id, date_start=date,
+            impressions=total_impressions, spend=total_spend,
+            frequency=avg_frequency, ctr=avg_ctr, actions=[],
+        ))
+
+    return combined
+
+
+def insights_by_adset(meta: MetaData) -> dict[str, list[DailyInsight]]:
+    """Impression-weighted rollup of each adset's ads, day by day."""
+    by_ad = insights_by_ad(meta)
+    ad_to_adset = {ad.id: ad.adset_id for ad in meta.ads}
+    adset_to_campaign = {a.id: a.campaign_id for a in meta.adsets}
+
+    grouped: dict[str, list[list[DailyInsight]]] = {}
+    for ad_id, insights in by_ad.items():
+        adset_id = ad_to_adset.get(ad_id)
+        if adset_id is None:
+            continue
+        grouped.setdefault(adset_id, []).append(insights)
+
+    return {
+        adset_id: _combine_daily(
+            lists, adset_id=adset_id, campaign_id=adset_to_campaign.get(adset_id, "")
+        )
+        for adset_id, lists in grouped.items()
+    }
+
+
+def insights_by_campaign(meta: MetaData) -> dict[str, list[DailyInsight]]:
+    """Impression-weighted rollup of each campaign's adsets, day by day."""
+    by_adset = insights_by_adset(meta)
+    adset_to_campaign = {a.id: a.campaign_id for a in meta.adsets}
+
+    grouped: dict[str, list[list[DailyInsight]]] = {}
+    for adset_id, insights in by_adset.items():
+        campaign_id = adset_to_campaign.get(adset_id)
+        if campaign_id is None:
+            continue
+        grouped.setdefault(campaign_id, []).append(insights)
+
+    return {
+        campaign_id: _combine_daily(lists, campaign_id=campaign_id)
+        for campaign_id, lists in grouped.items()
+    }
+
+
 if __name__ == "__main__":
-    meta = load_meta("data/meta_data.json")
+    meta = load_meta("data/train/meta_train.json")
     print(f"Campaigns: {len(meta.campaigns)}, Adsets: {len(meta.adsets)}, "
           f"Ads: {len(meta.ads)}, Creatives: {len(meta.creatives)}, Insights: {len(meta.insights)}")
     from collections import Counter
