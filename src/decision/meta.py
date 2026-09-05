@@ -9,6 +9,12 @@ FATIGUE_CTR_DROP_THRESHOLD = 0.25
 FATIGUE_WINDOW_DAYS = 7
 FATIGUE_MIN_DAYS_FOR_CTR_CHECK = FATIGUE_WINDOW_DAYS * 2
 
+# Grounded in documented Meta pause practice (ROASPIG/Adamigo): don't judge
+# CPA until spend >= 1.5x the baseline CPA, then flag if CPA > 2x baseline
+# (or spend happened with zero orders at all).
+MIN_SPEND_MULTIPLIER = 1.5
+CPA_STOP_MULTIPLIER = 2.0
+
 
 def _avg(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
@@ -53,6 +59,16 @@ def frequency_warning(daily_insights: list[DailyInsight]) -> bool:
         return False
 
     return FATIGUE_WARNING_FREQUENCY_THRESHOLD <= avg_frequency < FATIGUE_FREQUENCY_THRESHOLD
+
+
+def is_underperforming(spend: float | None, orders: int, baseline_cpa: float | None) -> bool:
+    if spend is None or baseline_cpa is None:
+        return False
+    if spend < baseline_cpa * MIN_SPEND_MULTIPLIER:
+        return False
+    if orders == 0:
+        return True
+    return (spend / orders) > baseline_cpa * CPA_STOP_MULTIPLIER
 
 
 if __name__ == "__main__":

@@ -1,12 +1,15 @@
 from .conversation import PROBABILITY_THRESHOLD, _probabilities_against_baseline, decide, report
 from .meta import (
+    CPA_STOP_MULTIPLIER,
     FATIGUE_CTR_DROP_THRESHOLD,
     FATIGUE_FREQUENCY_THRESHOLD,
     FATIGUE_MIN_DAYS_FOR_CTR_CHECK,
     FATIGUE_WARNING_FREQUENCY_THRESHOLD,
     FATIGUE_WINDOW_DAYS,
+    MIN_SPEND_MULTIPLIER,
     frequency_warning,
     is_fatigued,
+    is_underperforming,
 )
 
 
