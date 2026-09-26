@@ -5,3 +5,6 @@ __pycache__/
 .DS_Store
 _verify_app.py
 _verify_app2.py
+
+# Personal notes, reasoning logs and findings (kept locally, not in the repo)
+notes/

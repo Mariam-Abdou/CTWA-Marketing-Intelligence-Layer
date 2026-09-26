@@ -1,6 +1,6 @@
 """
 Train/holdout split, from the ORIGINAL data. Method: split by campaign
-start_date (see SPLIT_REASONING.md and split_lib.py). products.json is NOT
+start_date (see split_lib.py). products.json is NOT
 split - it's a static catalog needed identically on both sides.
 
 For carving a validation slice OUT OF train (to tune thresholds without ever

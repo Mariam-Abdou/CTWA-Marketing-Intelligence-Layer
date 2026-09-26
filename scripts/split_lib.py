@@ -1,7 +1,7 @@
 """
 Shared date-cutoff split logic, used by BOTH split.py (train/holdout, from the
 original data) and split_validation.py (inner_train/validation, carved out of
-train only). One method, one implementation -- see SPLIT_REASONING.md.
+train only). One method, one implementation.
 
 Method: any campaign whose start_date falls on/after a cutoff date goes to
 the "held" side; everything else (including organic/direct, which carry no

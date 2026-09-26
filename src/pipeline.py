@@ -130,7 +130,7 @@ def build_scoreboard(rates, posteriors, get_baseline, plan, labels, insights_by_
 def _median_roas(roas: dict[str, float]) -> float | None:
     """The money benchmark for this level, same shape as the rate baseline.
     Median, not mean: a couple of outliers at 5x drag a mean somewhere no
-    campaign actually sits (see findings.md)."""
+    campaign actually sits."""
     return median(roas.values()) if roas else None
 
 

@@ -1,5 +1,5 @@
 """
-Tunes PROBABILITY_THRESHOLD (never on holdout -- see VALIDATION_SPLIT_REASONING.md).
+Tunes PROBABILITY_THRESHOLD (never on holdout).
 
 What transfers between conv_train and conv_val is NOT any specific ad's score
 -- conv_val's campaigns (Eid Gifting Premium, Post-Eid Lookalike Test) don't
@@ -23,7 +23,7 @@ Two checks, for every candidate threshold:
      actually buying calibration, not just noise reduction we're assuming.
 
 HONEST LIMITATION, read before trusting a "best" threshold: conv_val has only
-2 campaigns / 4 adsets / 5 ads (see VALIDATION_SPLIT_REASONING.md). Treat the
+2 campaigns / 4 adsets / 5 ads. Treat the
 sweep as "does the decision get meaningfully worse in either direction," not
 "the precise optimal value" -- conv_train's own (larger, but in-sample) sweep
 is reported alongside as a secondary sanity check, not a substitute.

@@ -1,7 +1,7 @@
 """
 Carves a VALIDATION slice out of TRAIN -- never touches holdout. Same method
-as split.py (date cutoff on campaign start_date; see split_lib.py and
-VALIDATION_SPLIT_REASONING.md), applied a second time, one level in.
+as split.py (date cutoff on campaign start_date; see split_lib.py),
+applied a second time, one level in.
 
 Why this needs to exist at all: PROBABILITY_THRESHOLD (and anything else
 that needs tuning) has to be tuned SOMEWHERE. Tuning it on holdout would
@@ -96,7 +96,7 @@ def main():
         f"conv_train and conv_val ({both / total_customers * 100:.1f}% of customers touched). "
         f"{overlap_convs}/{len(conv_val)} conv_val conversations belong to a customer already "
         f"seen in conv_train.\n"
-        f"This is a REAL overlap, same shape as the train/holdout one (see SPLIT_REASONING.md) -- "
+        f"This is a REAL overlap, same shape as the train/holdout one -- "
         f"it means threshold-tuning here is not customer-disjoint. Report whatever gets tuned on "
         f"conv_val both including and excluding those overlapping customers' conversations, same as "
         f"you'll do for holdout."
