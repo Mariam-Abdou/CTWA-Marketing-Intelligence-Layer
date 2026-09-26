@@ -1,8 +1,7 @@
-from collections import defaultdict
 from dataclasses import dataclass
 
 from .classifier import classify
-from ..ingestion.joiner import JoinedConversation
+from ..ingestion.joiner import JoinedConversation, group_by_level
 
 
 @dataclass
@@ -10,26 +9,25 @@ class RawCounts:
     successes: int
     failures: int
     n: int
+    excluded: int  # conversations we couldn't classify (stuck_pending/active/adversarial) - outcome not known yet
     raw_rate: float | None
 
 
 def _summarize(conversations) -> RawCounts:
-    results = [r for c in conversations if (r := classify(c)).success is not None]
-    successes = sum(1 for r in results if r.success)
-    failures = len(results) - successes
-    n = len(results)
-    return RawCounts(successes=successes, failures=failures, n=n, raw_rate=successes / n if n else None)
+    results = [classify(c) for c in conversations]
+    scored = [r for r in results if r.success is not None]
+    successes = sum(1 for r in scored if r.success)
+    failures = len(scored) - successes
+    n = len(scored)
+    excluded = len(results) - n
+    return RawCounts(
+        successes=successes, failures=failures, n=n, excluded=excluded,
+        raw_rate=successes / n if n else None,
+    )
 
 
 def raw_rates(joined: list[JoinedConversation]) -> tuple[dict[str, RawCounts], dict[str, RawCounts], dict[str, RawCounts]]:
-    by_ad = defaultdict(list)
-    by_adset = defaultdict(list)
-    by_campaign = defaultdict(list)
-
-    for jc in joined:
-        by_ad[jc.ad.id].append(jc.conversation)
-        by_adset[jc.adset.id].append(jc.conversation)
-        by_campaign[jc.campaign.id].append(jc.conversation)
+    by_ad, by_adset, by_campaign = group_by_level(joined)
 
     ad_rates = {ad_id: _summarize(convs) for ad_id, convs in by_ad.items()}
     adset_rates = {adset_id: _summarize(convs) for adset_id, convs in by_adset.items()}
@@ -43,7 +41,7 @@ if __name__ == "__main__":
     from ..ingestion.meta_loader import load_meta
     from ..ingestion.joiner import join_conversations_to_meta
 
-    convs = load_conversations("data/train/train.json")
+    convs = load_conversations("data/train/conv_train.json")
     meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 

@@ -1,7 +1,7 @@
-from collections import defaultdict
 from dataclasses import dataclass
 
 from .amounts import get_outcome_amounts
+from ..ingestion.joiner import group_by_level
 
 
 @dataclass
@@ -24,12 +24,7 @@ def summarize_revenue(conversations) -> RevenueSummary:
 
 
 def revenue_totals(joined) -> tuple[dict, dict, dict]:
-    by_ad, by_adset, by_campaign = defaultdict(list), defaultdict(list), defaultdict(list)
-
-    for jc in joined:
-        by_ad[jc.ad.id].append(jc.conversation)
-        by_adset[jc.adset.id].append(jc.conversation)
-        by_campaign[jc.campaign.id].append(jc.conversation)
+    by_ad, by_adset, by_campaign = group_by_level(joined)
 
     ad_revenue = {ad_id: summarize_revenue(convs) for ad_id, convs in by_ad.items()}
     adset_revenue = {adset_id: summarize_revenue(convs) for adset_id, convs in by_adset.items()}
@@ -43,7 +38,7 @@ if __name__ == "__main__":
     from ..ingestion.meta_loader import load_meta
     from ..ingestion.joiner import join_conversations_to_meta
 
-    convs = load_conversations("data/train/train.json")
+    convs = load_conversations("data/train/conv_train.json")
     meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 

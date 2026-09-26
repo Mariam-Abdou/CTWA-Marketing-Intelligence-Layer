@@ -31,7 +31,7 @@ def classify(conversation: Conversation, min_success_amount: float = MIN_SUCCESS
 if __name__ == "__main__":
     from ..ingestion.conversation_loader import load_conversations
 
-    convs = load_conversations("data/train/train.json")
+    convs = load_conversations("data/train/conv_train.json")
     results = [classify(c) for c in convs]
 
     scoreable = [r for r in results if r.success is not None]

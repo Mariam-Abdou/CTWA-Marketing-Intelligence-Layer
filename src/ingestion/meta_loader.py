@@ -230,3 +230,34 @@ if __name__ == "__main__":
           f"Ads: {len(meta.ads)}, Creatives: {len(meta.creatives)}, Insights: {len(meta.insights)}")
     from collections import Counter
     print("Optimization goals:", Counter(a.optimization_goal for a in meta.adsets))
+
+def typical_campaign_days(meta: "MetaData") -> float:
+    """Median run length of a real campaign in this account, in days.
+
+    Used as the horizon a test has to resolve inside. A test that outlives the
+    campaign carrying it is answering a question about a season that has already
+    ended -- these campaigns are seasonal (Ramadan, Eid, Summer), so the context
+    it was measured in no longer exists.
+
+    always_on campaigns are excluded: they run the entire timeline by design and
+    would drag the median to something no seasonal campaign ever reaches."""
+    from datetime import date
+
+    lengths = []
+    for c in meta.campaigns:
+        if c.campaign_type == "always_on" or not c.end_date:
+            continue
+        try:
+            start = date.fromisoformat(c.start_date[:10])
+            end = date.fromisoformat(c.end_date[:10])
+        except (ValueError, TypeError):
+            continue
+        days = (end - start).days
+        if days > 0:
+            lengths.append(days)
+
+    if not lengths:
+        return 30.0
+    lengths.sort()
+    mid = len(lengths) // 2
+    return float(lengths[mid] if len(lengths) % 2 else (lengths[mid - 1] + lengths[mid]) / 2)

@@ -1,0 +1,6 @@
+scipy
+PyYAML
+python-dotenv
+openai
+streamlit
+pandas

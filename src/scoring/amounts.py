@@ -30,7 +30,7 @@ def get_outcome_amounts(conversation: Conversation) -> OutcomeAmounts:
 if __name__ == "__main__":
     from ..ingestion.conversation_loader import load_conversations
 
-    convs = load_conversations("data/train/train.json")
+    convs = load_conversations("data/train/conv_train.json")
     for c in convs[:25]:
         amounts = get_outcome_amounts(c)
         print(f"{c.id} | outcome={c.outcome.type:12s} | net={amounts.net}")

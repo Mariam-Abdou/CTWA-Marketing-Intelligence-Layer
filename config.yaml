@@ -1,0 +1,117 @@
+# Single source of truth for tunable thresholds. Loaded by src/config.py.
+# Every value here used to be a hardcoded Python constant scattered across
+# src/scoring and src/decision -- see NEW_FINDINGS / findings.md for grounding.
+
+scoring:
+  # Beta-Binomial prior strength (alpha+beta), now FIT FROM THE DATA each run
+  # (method of moments over that level's own raw rates -- see
+  # corrector.estimate_prior_strength) instead of hardcoded. This is what
+  # makes the corrector the "dynamic muscle": re-fit every cycle on all data
+  # so far, same formula, sharper number.
+  #
+  # prior_strength below is now only the FALLBACK, used when a level doesn't
+  # have enough groups to estimate from (see min_groups). A leave-one-campaign
+  # -out check on the original dataset put the ad-level number in the
+  # 8.23-11.57 range (see findings.md), so 10 is a reasonable fallback.
+  prior_strength: 10
+  # A group needs at least this many resolved conversations to count toward
+  # the heterogeneity estimate -- otherwise a handful of very small, very
+  # noisy groups dominate the variance and the estimate is garbage.
+  prior_strength_min_group_n: 3
+  # Need at least this many qualifying groups to estimate at all; below this,
+  # fall back to prior_strength.
+  prior_strength_min_groups: 3
+  # Guardrails on the fitted value so a data quirk can't produce near-zero
+  # (no shrinkage, pure noise trusted) or absurdly large (near-total
+  # shrinkage, real signal ignored) prior strength.
+  prior_strength_floor: 3
+  prior_strength_ceiling: 50
+
+decision:
+  # Probability-vs-baseline threshold for both scale and kill calls.
+  # Temporary -- not yet tuned against a holdout evaluation.
+  probability_threshold: 0.75
+  # Minimum real, resolved conversations behind a posterior before we'll act
+  # on it (scale/kill) at all -- the honest evidence gate. (Posterior
+  # "precision" can't be used for this: with prior_strength=10 it's already
+  # high from the prior alone, even at n=0.)
+  min_n_for_action: 5
+
+fatigue:
+  # frequency >= this = fatigue zone (cold/prospecting audiences).
+  frequency_threshold: 3.0
+  # 2.5-3.0 = warning only, does not veto scale.
+  warning_frequency_threshold: 2.5
+  ctr_drop_threshold: 0.25
+  window_days: 7
+
+cpa:
+  # Don't judge CPA until spend >= this multiple of baseline CPA.
+  min_spend_multiplier: 1.5
+  # Flag if CPA exceeds this multiple of baseline (or 0 orders at that spend).
+  stop_multiplier: 2.0
+
+allocation:
+  exploit_share: 0.70
+  explore_share: 0.30
+  # Hard cap on simultaneous explore tests, across ALL reasons an id lands in
+  # explore (no data yet, held at hold, fatigue-vetoed, CPA-vetoed).
+  max_explore_tests: 3
+  stop_rule:
+    # min_impressions was removed: this account runs ~99,000 impressions per
+    # conversation, so any impression floor is passed within minutes and never
+    # binds. The stop rule is expressed in conversations and days instead.
+    max_days: 7
+    confidence: 0.90
+
+split:
+  # Any campaign whose start_date falls on or after this date is reserved for
+  # the SACRED holdout, split off from the ORIGINAL data. Touched once, at
+  # the very end. See SPLIT_REASONING.md for the full justification.
+  holdout_cutoff_date: "2026-04-29"
+  # Any (non-holdout) campaign whose start_date falls on or after this date
+  # is carved out of the TRAIN side as a validation slice -- used to tune
+  # PROBABILITY_THRESHOLD and similar. Touched as often as needed; this is
+  # NOT holdout and must never substitute for it.
+  # Chosen as the start of the last two non-always_on train campaigns (Eid
+  # Gifting Premium + Post-Eid Lookalike Test): ~18% of train, spans two
+  # objectives (Sales + Leads), and is the most recent slice of train time
+  # -- see VALIDATION_SPLIT_REASONING.md.
+  validation_cutoff_date: "2026-03-22"
+  # campaign_type values excluded from BOTH cutoffs above; "always_on" runs
+  # the entire project timeline, so ordering it by start_date would put it
+  # in the earliest bucket regardless of when its conversations happened.
+  excluded_campaign_types: ["always_on"]
+  # organic/direct conversations carry no ad_id/adset_id/campaign_id, so they
+  # can never be scored -- always kept, never eligible for holdout or validation.
+  organic_direct_platforms: ["organic", "direct"]
+
+reasoning:
+  # Merchant-readable explanation of an already-made decision. The LLM never
+  # decides: action/bucket/score arrive here finished and it only puts them
+  # into words. Any failure (no key, no network, rate limit, or a number it
+  # invented) falls back to a deterministic template, so the pipeline runs
+  # fully offline and always produces this column.
+  # OpenAI-compatible endpoint -- swapping provider is a base_url + model change.
+  base_url: "https://api.groq.com/openai/v1"
+  # llama-3.3-70b-versatile was deprecated by Groq in Aug 2026 (404s now);
+  # gpt-oss-120b is its named replacement.
+  #
+  # It IS a reasoning model: hidden chain-of-thought is billed against
+  # max_tokens before any visible text, which truncated every explanation at
+  # the old 160-token budget. reasoning_effort keeps that spend small -- this
+  # task re-phrases facts that are already computed, so there is nothing to
+  # reason about -- and max_tokens leaves headroom for what it still uses.
+  model: "openai/gpt-oss-120b"
+  reasoning_effort: "low"
+  api_key_env: GROQ_API_KEY
+  max_tokens: 500
+  # Low but not zero: identical facts should read the same way run to run.
+  # Reproducibility comes from the cache below, not from temperature.
+  temperature: 0.2
+  # Keyed by a hash of the facts, so an unchanged row re-uses its sentence
+  # instead of re-generating it (and burning free-tier quota).
+  # Free tier allows 30 requests/minute; pace to stay under it. Only applies
+  # to uncached rows, so this cost is paid once.
+  min_interval_seconds: 2.1
+  cache_path: "outputs/reasoning_cache.json"

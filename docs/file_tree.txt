@@ -1,0 +1,76 @@
++----------------------------------------------------------------------+
+|                                app.py                                |
+|           Streamlit UI (2 pages: Scoreboard+Plan, Numbers)           |
+|                      reads outputs/plan_*.json                       |
++----------------------------------------------------------------------+
+                                   ^                                    
++----------------------------------------------------------------------+
+|                           src/reporting.py                           |
+|                             OUTPUT LAYER                             |
+|              write_csv / write_plan / print_scoreboard               |
++----------------------------------------------------------------------+
+                                   ^                                    
++----------------------------------------------------------------------+
+|                           src/pipeline.py                            |
+|               ORCHESTRATION -- wires every layer below               |
++----------------------------------------------------------------------+
+                                   ^                                    
++----------------------+   +----------------------+   +----------------------+
+|    src/reasoning/    |   |    src/decision/     |   |    src/auditing/     |
+|   REASONING LAYER    |   |    DECISION LAYER    |   |     AUDIT LAYER      |
+|----------------------|   |----------------------|   |----------------------|
+|        llm.py        |   | outcome_decision.py  |   |       audit.py       |
+|     reasoning.py     |   |        decide()      |   |    ROAS / spend --   |
+|    hypothesis.py     |   |    guardrails.py     |   |      never feeds     |
+|                      |   |    fatigue/CPA veto  |   |       decisions      |
+|     text only --     |   |      action.py       |   |     findings.py      |
+|    never changes     |   |    resolve_action()  |   |      decision vs     |
+|      a decision      |   |    allocation.py     |   |         money        |
+|                      |   |      70/30 split     |   |      disagreement    |
+|                      |   | explore_selection.py |   |                      |
+|                      |   |   which tests get $  |   |                      |
+|                      |   |    stop_rules.py     |   |                      |
+|                      |   |  when a test is done |   |                      |
+|                      |   |     new_tests.py     |   |                      |
+|                      |   |   never-run pairings |   |                      |
++----------------------+   +----------------------+   +----------------------+
+                                      ^
++----------------------------------------------------------------------+
+|                             src/scoring/                             |
+|                            SCORING LAYER                             |
+|              ------------------------------------------              |
+|         classifier.py    -> success/fail (net >= min price)          |
+|           amounts.py       -> net revenue per outcome type           |
+|        aggregator.py    -> RawCounts (n, successes, failures)        |
+|    corrector.py     -> Beta-Binomial score (shrunk toward parent)    |
+|                        + estimate_prior_strength() (fits itself)     |
+|              revenue.py       -> money totals per level              |
++----------------------------------------------------------------------+
+                                   ^                                    
++----------------------------------------------------------------------+
+|                            src/ingestion/                            |
+|                           INGESTION LAYER                            |
+|              ------------------------------------------              |
+|      conversation_loader.py  -> Conversation + validated enums       |
+|  meta_loader.py          -> campaigns/adsets/ads/creatives/insights  |
+|   joiner.py               -> JoinedConversation + group_by_level()   |
+|         io_utils.py             -> load_json / validate_enum         |
++----------------------------------------------------------------------+
+                                   ^                                    
++----------------------------------------------------------------------+
+|                                data/                                 |
+|                   conv_train.json, meta_train.json                   |
++----------------------------------------------------------------------+
+
++----------------------------------------------------------------------+
+|                               scripts/                               |
+|           TOOLING -- not part of the pipeline, run by hand           |
+|              ------------------------------------------              |
+|            inspect.py            trace one id end-to-end             |
+|          tune_threshold.py     search PROBABILITY_THRESHOLD          |
+|            split.py / split_lib.py / split_validation.py             |
+|                              train/holdout/validation splits         |
+|        time_split_brier.py   out-of-sample calibration check         |
+|              explore_and_join.py, extract_statuses.py,               |
+|            generate_report.py    one-off data exploration            |
++----------------------------------------------------------------------+

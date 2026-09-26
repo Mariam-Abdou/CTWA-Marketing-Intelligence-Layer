@@ -83,7 +83,7 @@ def load_conversations(path: str | Path) -> list[Conversation]:
 
 
 if __name__ == "__main__":
-    convs = load_conversations("data/train/train.json")
+    convs = load_conversations("data/train/conv_train.json")
     print(f"Loaded {len(convs)} conversations.")
     from collections import Counter
     print("Platforms:", Counter(c.source.platform for c in convs))
