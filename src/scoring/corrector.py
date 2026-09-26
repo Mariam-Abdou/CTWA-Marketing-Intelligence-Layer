@@ -3,10 +3,18 @@ from dataclasses import dataclass
 from scipy.stats import beta as beta_dist
 
 from .aggregator import RawCounts
+from ..config import load_config
 
-# Fixed prior strength (alpha+beta)
-# grounded in pooled variance of raw rates of ad-level (method-of-moments)
-PRIOR_STRENGTH = 10
+_cfg = load_config()["scoring"]
+
+# Fallback prior strength (alpha+beta), used only when a level doesn't have
+# enough groups to fit one from data -- see estimate_prior_strength() below,
+# which is what actually drives shrinkage in the pipeline now.
+PRIOR_STRENGTH = _cfg["prior_strength"]
+PRIOR_STRENGTH_MIN_GROUP_N = _cfg["prior_strength_min_group_n"]
+PRIOR_STRENGTH_MIN_GROUPS = _cfg["prior_strength_min_groups"]
+PRIOR_STRENGTH_FLOOR = _cfg["prior_strength_floor"]
+PRIOR_STRENGTH_CEILING = _cfg["prior_strength_ceiling"]
 
 # A common standard choice (convention)
 CREDIBLE_INTERVAL = 0.90
@@ -64,37 +72,65 @@ def compute_posterior(child: RawCounts, parent_rate: float, prior_strength: floa
     return _build_posterior(alpha_post, beta_post)
 
 
-if __name__ == "__main__":
-    from ..ingestion.conversation_loader import load_conversations
-    from ..ingestion.meta_loader import load_meta
-    from ..ingestion.joiner import join_conversations_to_meta
-    from .aggregator import raw_rates
+def estimate_prior_strength(
+    raw_counts: dict[str, RawCounts],
+    *,
+    min_group_n: int = PRIOR_STRENGTH_MIN_GROUP_N,
+    min_groups: int = PRIOR_STRENGTH_MIN_GROUPS,
+    floor: float = PRIOR_STRENGTH_FLOOR,
+    ceiling: float = PRIOR_STRENGTH_CEILING,
+    fallback: float = PRIOR_STRENGTH,
+) -> float:
+    """
+    Method-of-moments estimate of the Beta prior's strength (alpha+beta),
+    fit fresh from this level's own raw rates (e.g. every ad's RawCounts this
+    cycle) instead of a hardcoded constant. Re-run on more cycles of data
+    (past + new), the estimate moves -- this is the "dynamic muscle" plugged
+    into the static shrinkage formula in compute_posterior().
 
-    convs = load_conversations("data/train/train.json")
-    meta = load_meta("data/train/meta_train.json")
-    joined = join_conversations_to_meta(convs, meta).scoreable
+    The idea: if every group in `raw_counts` truly shared one underlying rate
+    p_bar, the only reason each group's own raw_rate would differ from p_bar
+    is Binomial sampling noise (~p_bar*(1-p_bar)/n for a group with n
+    observations). Whatever variance across groups is LEFT OVER once that
+    expected noise is subtracted out is real, prior-worthy heterogeneity.
+    Less real heterogeneity -> a group's own point estimate deserves less
+    trust and should be pulled harder toward p_bar -> higher prior strength.
 
-    ad_rates, adset_rates, campaign_rates = raw_rates(joined)
+    For a Beta(alpha, beta) prior with mean p_bar, Var = p_bar*(1-p_bar) /
+    (alpha+beta+1). Solving for alpha+beta given the estimated real
+    between-group variance gives this function's return value.
 
-    sample_ad_id = sorted(ad_rates.keys())[0]
-    jc = next(j for j in joined if j.ad.id == sample_ad_id)
-    adset_id = jc.adset.id
-    campaign_id = jc.campaign.id
+    Falls back to `fallback` when there aren't enough groups with enough data
+    to estimate anything meaningful from (see min_group_n / min_groups).
+    """
+    groups = [rc for rc in raw_counts.values() if rc.n >= min_group_n]
+    if len(groups) < min_groups:
+        return fallback
 
-    campaign_rc = campaign_rates[campaign_id]
-    adset_rc = adset_rates[adset_id]
-    ad_rc = ad_rates[sample_ad_id]
+    total_successes = sum(rc.successes for rc in groups)
+    total_n = sum(rc.n for rc in groups)
+    if total_n == 0:
+        return fallback
+    p_bar = total_successes / total_n
 
-    campaign_posterior = compute_top_level_posterior(campaign_rc)
-    adset_posterior = compute_posterior(adset_rc, campaign_posterior.score, PRIOR_STRENGTH)
-    ad_posterior = compute_posterior(ad_rc, adset_posterior.score, PRIOR_STRENGTH)
+    k = len(groups)
+    observed_variance = sum((rc.raw_rate - p_bar) ** 2 for rc in groups) / (k - 1)
 
-    print(f"Campaign {campaign_id}: raw_rate={campaign_rc.raw_rate:.4f} -> score={campaign_posterior.score:.4f}, "
-          f"interval=[{campaign_posterior.interval_low:.4f}, {campaign_posterior.interval_high:.4f}], "
-          f"precision={campaign_posterior.precision:.4f} (n={campaign_rc.n})")
-    print(f"   Adset {adset_id}: raw_rate={adset_rc.raw_rate:.4f} -> shrunk score={adset_posterior.score:.4f}, "
-          f"interval=[{adset_posterior.interval_low:.4f}, {adset_posterior.interval_high:.4f}], "
-          f"precision={adset_posterior.precision:.4f} (n={adset_rc.n})")
-    print(f"      Ad {sample_ad_id}: raw_rate={ad_rc.raw_rate:.4f} -> shrunk score={ad_posterior.score:.4f}, "
-          f"interval=[{ad_posterior.interval_low:.4f}, {ad_posterior.interval_high:.4f}], "
-          f"precision={ad_posterior.precision:.4f} (n={ad_rc.n})")
+    mean_n = total_n / k
+    expected_noise = p_bar * (1 - p_bar) / mean_n if mean_n else 0.0
+
+    between_group_variance = observed_variance - expected_noise
+    if between_group_variance <= 0:
+        # No detectable real heterogeneity above sampling noise: the data is
+        # saying "trust the shared rate, distrust individual point estimates"
+        # -- i.e. maximal shrinkage, capped at `ceiling` rather than infinity.
+        return ceiling
+
+    prior_strength = p_bar * (1 - p_bar) / between_group_variance - 1
+    return max(floor, min(ceiling, prior_strength))
+
+
+# Demo removed -- it rebuilt the whole posterior chain from scratch just to
+# print one example, drifting out of sync with the real pipeline in the
+# process (see auditing/findings.py). To inspect one id end-to-end, run:
+#   python3 -m scripts.inspect --level <campaign|adset|ad> --id <id>
