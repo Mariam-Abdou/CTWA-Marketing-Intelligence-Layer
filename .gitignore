@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+_verify_app.py
+_verify_app2.py

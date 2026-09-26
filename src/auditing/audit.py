@@ -84,7 +84,7 @@ def print_roas(label, rows):
 
 
 if __name__ == "__main__":
-    convs = load_conversations("data/train/train.json")
+    convs = load_conversations("data/train/conv_train.json")
     meta = load_meta("data/train/meta_train.json")
     joined = join_conversations_to_meta(convs, meta).scoreable
 
