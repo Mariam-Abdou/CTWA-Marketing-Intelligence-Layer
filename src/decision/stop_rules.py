@@ -1,6 +1,6 @@
 """
 "How much more spend, and how long, before an explore test can be called" --
-commercial, CPA-guardrail based (see EXPLORE_EXPLOIT_REASONING.md #3), not a
+commercial, CPA-guardrail based, not a
 statistical resolution of the WhatsApp conversion rate.
 
 The earlier design projected the Beta posterior forward assuming the observed

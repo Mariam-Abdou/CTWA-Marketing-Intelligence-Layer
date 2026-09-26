@@ -67,7 +67,7 @@ allocation:
 split:
   # Any campaign whose start_date falls on or after this date is reserved for
   # the SACRED holdout, split off from the ORIGINAL data. Touched once, at
-  # the very end. See SPLIT_REASONING.md for the full justification.
+  # the very end.
   holdout_cutoff_date: "2026-04-29"
   # Any (non-holdout) campaign whose start_date falls on or after this date
   # is carved out of the TRAIN side as a validation slice -- used to tune
@@ -75,8 +75,7 @@ split:
   # NOT holdout and must never substitute for it.
   # Chosen as the start of the last two non-always_on train campaigns (Eid
   # Gifting Premium + Post-Eid Lookalike Test): ~18% of train, spans two
-  # objectives (Sales + Leads), and is the most recent slice of train time
-  # -- see VALIDATION_SPLIT_REASONING.md.
+  # objectives (Sales + Leads), and is the most recent slice of train time.
   validation_cutoff_date: "2026-03-22"
   # campaign_type values excluded from BOTH cutoffs above; "always_on" runs
   # the entire project timeline, so ordering it by start_date would put it
