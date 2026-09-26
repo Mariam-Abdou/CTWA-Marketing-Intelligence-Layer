@@ -1,0 +1,2805 @@
+===FILE: src/ingestion/conversation_loader.py===
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from src.ingestion.io_utils import load_json, validate_enum
+
+KNOWN_OUTCOME_TYPES = {
+    "delivered", "ghosted", "cancelled", "refunded",
+    "active", "stuck_pending", "adversarial",
+}
+PLATFORMS = {"meta_ctwa", "organic", "direct"}
+
+
+@dataclass
+class ConversationSource:
+    platform: str
+    ctwa_clid: str | None = None
+    ad_id: str | None = None
+    campaign_id: str | None = None
+    creative_id: str | None = None
+    headline: str | None = None
+
+
+@dataclass
+class ConversationOutcome:
+    type: str
+    order_id: str | None = None
+    total: float | None = None
+    raw: dict = field(default_factory=dict)
+
+
+@dataclass
+class Conversation:
+    id: str
+    started_at: str
+    cycle: int
+    customer_id: str
+    source: ConversationSource
+    outcome: ConversationOutcome
+    messages: list
+    status: str
+
+
+def _parse_source(raw: dict, conv_id: str) -> ConversationSource:
+    validate_enum(raw.get("platform"), PLATFORMS, "platform", conv_id)
+    return ConversationSource(
+        platform=raw["platform"],
+        ctwa_clid=raw.get("ctwa_clid"),
+        ad_id=raw.get("ad_id"),
+        campaign_id=raw.get("campaign_id"),
+        creative_id=raw.get("creative_id"),
+        headline=raw.get("headline"),
+    )
+
+
+def _parse_outcome(raw: dict, conv_id: str) -> ConversationOutcome:
+    validate_enum(raw.get("type"), KNOWN_OUTCOME_TYPES, "outcome.type", conv_id)
+    return ConversationOutcome(
+        type=raw["type"],
+        order_id=raw.get("order_id"),
+        total=raw.get("total"),
+        raw=raw,
+    )
+
+
+def load_conversations(path: str | Path) -> list[Conversation]:
+    raw_records = load_json(path)
+    conversations = []
+    for r in raw_records:
+        conv_id = r["id"]
+        conversations.append(
+            Conversation(
+                id=conv_id,
+                started_at=r.get("started_at"),
+                cycle=r.get("cycle"),
+                customer_id=r.get("customer", {}).get("id"),
+                source=_parse_source(r["source"], conv_id),
+                outcome=_parse_outcome(r["outcome"], conv_id),
+                messages=r.get("messages", []),
+                status=r.get("status"),
+            )
+        )
+    return conversations
+
+
+if __name__ == "__main__":
+    convs = load_conversations("data/train/conv_train.json")
+    print(f"Loaded {len(convs)} conversations.")
+    from collections import Counter
+    print("Platforms:", Counter(c.source.platform for c in convs))
+    print("Outcome types:", Counter(c.outcome.type for c in convs))
+===FILE: src/ingestion/meta_loader.py===
+from dataclasses import dataclass
+from pathlib import Path
+
+from src.ingestion.io_utils import load_json, validate_enum
+
+KNOWN_OPTIMIZATION_GOALS = {"CONVERSATIONS", "REACH"}
+
+
+@dataclass
+class Campaign:
+    id: str
+    name: str
+    objective: str
+    campaign_type: str
+    start_date: str
+    end_date: str | None
+    status: str
+
+
+@dataclass
+class Adset:
+    id: str
+    name: str
+    campaign_id: str
+    audience_type: str
+    optimization_goal: str
+    daily_budget: float | None
+    status: str
+
+
+@dataclass
+class Ad:
+    id: str
+    name: str
+    adset_id: str
+    campaign_id: str
+    creative_id: str | None
+    start_date: str
+    end_date: str | None
+    status: str
+
+
+@dataclass
+class Creative:
+    id: str
+    name: str
+    theme: str | None
+    angle: str | None
+    status: str
+
+
+@dataclass
+class DailyInsight:
+    ad_id: str
+    adset_id: str
+    campaign_id: str
+    date_start: str
+    impressions: int | None
+    spend: float | None
+    frequency: float | None
+    ctr: float | None
+    actions: list
+
+
+@dataclass
+class MetaData:
+    campaigns: list[Campaign]
+    adsets: list[Adset]
+    ads: list[Ad]
+    creatives: list[Creative]
+    insights: list[DailyInsight]
+
+
+def _parse_campaign(r: dict) -> Campaign:
+    return Campaign(
+        id=r["id"], name=r.get("name"), objective=r.get("objective"),
+        campaign_type=r.get("campaign_type"), start_date=r.get("start_date"),
+        end_date=r.get("end_date"), status=r.get("status"),
+    )
+
+
+def _parse_adset(r: dict) -> Adset:
+    validate_enum(r.get("optimization_goal"), KNOWN_OPTIMIZATION_GOALS, "optimization_goal", r["id"])
+    budget = r.get("daily_budget")
+    return Adset(
+        id=r["id"], name=r.get("name"), campaign_id=r.get("campaign_id"),
+        audience_type=r.get("audience_type"), optimization_goal=r["optimization_goal"],
+        daily_budget=float(budget) if budget is not None else None,
+        status=r.get("status"),
+    )
+
+
+def _parse_ad(r: dict) -> Ad:
+    creative = r.get("creative") or {}
+    return Ad(
+        id=r["id"], name=r.get("name"), adset_id=r.get("adset_id"),
+        campaign_id=r.get("campaign_id"), creative_id=creative.get("id"),
+        start_date=r.get("start_date"), end_date=r.get("end_date"),
+        status=r.get("status"),
+    )
+
+
+def _parse_creative(r: dict) -> Creative:
+    return Creative(
+        id=r["id"], name=r.get("name"), theme=r.get("theme"),
+        angle=r.get("angle"), status=r.get("status"),
+    )
+
+
+def _parse_insight(r: dict) -> DailyInsight:
+    return DailyInsight(
+        ad_id=r.get("ad_id"), adset_id=r.get("adset_id"), campaign_id=r.get("campaign_id"),
+        date_start=r.get("date_start"),
+        impressions=int(r["impressions"]) if r.get("impressions") is not None else None,
+        spend=float(r["spend"]) if r.get("spend") is not None else None,
+        frequency=float(r["frequency"]) if r.get("frequency") is not None else None,
+        ctr=float(r["ctr"]) if r.get("ctr") is not None else None,
+        actions=r.get("actions", []),
+    )
+
+
+def load_meta(path: str | Path) -> MetaData:
+    raw = load_json(path)
+    return MetaData(
+        campaigns=[_parse_campaign(r) for r in raw["campaigns"]],
+        adsets=[_parse_adset(r) for r in raw["adsets"]],
+        ads=[_parse_ad(r) for r in raw["ads"]],
+        creatives=[_parse_creative(r) for r in raw["creatives"]],
+        insights=[_parse_insight(r) for r in raw["insights"]],
+    )
+
+
+def insights_by_ad(meta: MetaData) -> dict[str, list[DailyInsight]]:
+    """Groups daily insights by ad_id, each list sorted chronologically."""
+    grouped: dict[str, list[DailyInsight]] = {}
+    for insight in meta.insights:
+        grouped.setdefault(insight.ad_id, []).append(insight)
+
+    for ad_id in grouped:
+        grouped[ad_id].sort(key=lambda i: i.date_start)
+
+    return grouped
+
+
+def _combine_daily(
+    insight_lists: list[list[DailyInsight]],
+    *,
+    ad_id: str = "",
+    adset_id: str = "",
+    campaign_id: str = "",
+) -> list[DailyInsight]:
+    by_date: dict[str, list[DailyInsight]] = {}
+    for lst in insight_lists:
+        for i in lst:
+            by_date.setdefault(i.date_start, []).append(i)
+
+    combined = []
+    for date in sorted(by_date):
+        day = by_date[date]
+
+        imp_values = [i.impressions for i in day if i.impressions is not None]
+        total_impressions = sum(imp_values) if imp_values else None
+
+        spend_values = [i.spend for i in day if i.spend is not None]
+        total_spend = sum(spend_values) if spend_values else None
+
+        freq_weight = sum(i.impressions or 0 for i in day if i.frequency is not None)
+        avg_frequency = (
+            sum((i.frequency or 0) * (i.impressions or 0) for i in day if i.frequency is not None) / freq_weight
+            if freq_weight else None
+        )
+
+        ctr_weight = sum(i.impressions or 0 for i in day if i.ctr is not None)
+        avg_ctr = (
+            sum((i.ctr or 0) * (i.impressions or 0) for i in day if i.ctr is not None) / ctr_weight
+            if ctr_weight else None
+        )
+
+        combined.append(DailyInsight(
+            ad_id=ad_id, adset_id=adset_id, campaign_id=campaign_id, date_start=date,
+            impressions=total_impressions, spend=total_spend,
+            frequency=avg_frequency, ctr=avg_ctr, actions=[],
+        ))
+
+    return combined
+
+
+def insights_by_adset(meta: MetaData) -> dict[str, list[DailyInsight]]:
+    """Impression-weighted rollup of each adset's ads, day by day."""
+    by_ad = insights_by_ad(meta)
+    ad_to_adset = {ad.id: ad.adset_id for ad in meta.ads}
+    adset_to_campaign = {a.id: a.campaign_id for a in meta.adsets}
+
+    grouped: dict[str, list[list[DailyInsight]]] = {}
+    for ad_id, insights in by_ad.items():
+        adset_id = ad_to_adset.get(ad_id)
+        if adset_id is None:
+            continue
+        grouped.setdefault(adset_id, []).append(insights)
+
+    return {
+        adset_id: _combine_daily(
+            lists, adset_id=adset_id, campaign_id=adset_to_campaign.get(adset_id, "")
+        )
+        for adset_id, lists in grouped.items()
+    }
+
+
+def insights_by_campaign(meta: MetaData) -> dict[str, list[DailyInsight]]:
+    """Impression-weighted rollup of each campaign's adsets, day by day."""
+    by_adset = insights_by_adset(meta)
+    adset_to_campaign = {a.id: a.campaign_id for a in meta.adsets}
+
+    grouped: dict[str, list[list[DailyInsight]]] = {}
+    for adset_id, insights in by_adset.items():
+        campaign_id = adset_to_campaign.get(adset_id)
+        if campaign_id is None:
+            continue
+        grouped.setdefault(campaign_id, []).append(insights)
+
+    return {
+        campaign_id: _combine_daily(lists, campaign_id=campaign_id)
+        for campaign_id, lists in grouped.items()
+    }
+
+
+if __name__ == "__main__":
+    meta = load_meta("data/train/meta_train.json")
+    print(f"Campaigns: {len(meta.campaigns)}, Adsets: {len(meta.adsets)}, "
+          f"Ads: {len(meta.ads)}, Creatives: {len(meta.creatives)}, Insights: {len(meta.insights)}")
+    from collections import Counter
+    print("Optimization goals:", Counter(a.optimization_goal for a in meta.adsets))
+
+def typical_campaign_days(meta: "MetaData") -> float:
+    """Median run length of a real campaign in this account, in days.
+
+    Used as the horizon a test has to resolve inside. A test that outlives the
+    campaign carrying it is answering a question about a season that has already
+    ended -- these campaigns are seasonal (Ramadan, Eid, Summer), so the context
+    it was measured in no longer exists.
+
+    always_on campaigns are excluded: they run the entire timeline by design and
+    would drag the median to something no seasonal campaign ever reaches."""
+    from datetime import date
+
+    lengths = []
+    for c in meta.campaigns:
+        if c.campaign_type == "always_on" or not c.end_date:
+            continue
+        try:
+            start = date.fromisoformat(c.start_date[:10])
+            end = date.fromisoformat(c.end_date[:10])
+        except (ValueError, TypeError):
+            continue
+        days = (end - start).days
+        if days > 0:
+            lengths.append(days)
+
+    if not lengths:
+        return 30.0
+    lengths.sort()
+    mid = len(lengths) // 2
+    return float(lengths[mid] if len(lengths) % 2 else (lengths[mid - 1] + lengths[mid]) / 2)
+
+===FILE: src/ingestion/joiner.py===
+from dataclasses import dataclass
+
+from src.ingestion.conversation_loader import Conversation, load_conversations
+from src.ingestion.meta_loader import Ad, Adset, Campaign, MetaData, load_meta
+
+from ..config import load_config
+
+# Config, not a literal: these platforms carry no ad ids so they can never be
+# scored, and the same list decides what the train/holdout split keeps.
+ORGANIC_OR_DIRECT = set(load_config()["split"]["organic_direct_platforms"])
+
+
+@dataclass
+class JoinedConversation:
+    conversation: Conversation
+    ad: Ad
+    adset: Adset
+    campaign: Campaign
+
+
+@dataclass
+class JoinResult:
+    scoreable: list[JoinedConversation]
+    organic_or_direct: list[Conversation]
+    unmatched_ctwa: list[Conversation]
+
+
+def join_conversations_to_meta(conversations: list[Conversation], meta: MetaData) -> JoinResult:
+    ads_by_id = {ad.id: ad for ad in meta.ads}
+    adsets_by_id = {a.id: a for a in meta.adsets}
+    campaigns_by_id = {c.id: c for c in meta.campaigns}
+
+    scoreable, organic_or_direct, unmatched_ctwa = [], [], []
+
+    for conv in conversations:
+        if conv.source.platform in ORGANIC_OR_DIRECT:
+            organic_or_direct.append(conv)
+            continue
+
+        ad = ads_by_id.get(conv.source.ad_id)
+        adset = adsets_by_id.get(ad.adset_id) if ad else None
+        campaign = campaigns_by_id.get(ad.campaign_id) if ad else None
+
+        if ad is None or adset is None or campaign is None:
+            unmatched_ctwa.append(conv)
+            continue
+
+        scoreable.append(JoinedConversation(conversation=conv, ad=ad, adset=adset, campaign=campaign))
+
+    return JoinResult(scoreable=scoreable, organic_or_direct=organic_or_direct, unmatched_ctwa=unmatched_ctwa)
+
+
+def group_by_level(joined: list[JoinedConversation]) -> tuple[dict, dict, dict]:
+    """Conversations grouped three ways from one pass over joined: by ad id,
+    by adset id, by campaign id. Shared by scoring/aggregator.py (success/failure
+    counts) and scoring/revenue.py (money) -- they used to each re-walk joined
+    with an identical loop; this is the one place that walk happens now."""
+    from collections import defaultdict
+
+    by_ad, by_adset, by_campaign = defaultdict(list), defaultdict(list), defaultdict(list)
+    for jc in joined:
+        by_ad[jc.ad.id].append(jc.conversation)
+        by_adset[jc.adset.id].append(jc.conversation)
+        by_campaign[jc.campaign.id].append(jc.conversation)
+    return by_ad, by_adset, by_campaign
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--conversations", default="data/train/conv_train.json")
+    parser.add_argument("--meta", default="data/train/meta_train.json")
+    args = parser.parse_args()
+
+    convs = load_conversations(args.conversations)
+    meta = load_meta(args.meta)
+    result = join_conversations_to_meta(convs, meta)
+
+    print(f"Scoreable: {len(result.scoreable)}")
+    print(f"Organic/direct: {len(result.organic_or_direct)}")
+    print(f"Unmatched CTWA: {len(result.unmatched_ctwa)}")
+===FILE: src/ingestion/io_utils.py===
+import json
+from pathlib import Path
+
+
+def load_json(path: str | Path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def validate_enum(value, allowed: set, field_name: str, record_id: str):
+    if value not in allowed:
+        raise ValueError(f"{field_name} '{value}' on '{record_id}' not in {allowed}")
+    return value
+===FILE: src/config.py===
+"""
+Single source of truth for tunable thresholds -- see config.yaml at the repo
+root for the actual values and their grounding. Every module that used to
+hardcode a constant (PRIOR_STRENGTH, PROBABILITY_THRESHOLD, fatigue/CPA
+thresholds, EXPLOIT_SHARE/EXPLORE_SHARE, ...) now reads it from here, so the
+pipeline is config-driven: change config.yaml, re-run, nothing to edit in code.
+"""
+from functools import lru_cache
+from pathlib import Path
+
+import yaml
+
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+
+
+@lru_cache(maxsize=1)
+def load_config(path: str | Path = CONFIG_PATH) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+===FILE: src/__init__.py===
+
+===FILE: src/reasoning/__init__.py===
+
+===FILE: src/reasoning/llm.py===
+"""
+Shared plumbing for every LLM task in this project.
+
+The boundary this whole package exists to enforce: the LLM writes, it never
+decides. score, action, bucket and the 70/30 split are computed upstream and
+arrive here finished; nothing in this package can change them.
+
+What keeps a generated sentence honest is the prompt and the facts it is
+given: the model only ever sees values already computed upstream, written out
+in the words a merchant would use.
+
+There was also a check that matched every number in the output against those
+facts. It was removed. Over ~50 generations it rejected four correct sentences
+and caught no invented one, and each fix to it was another exception (digits
+inside a name, inside the stop rule, a hyphen read as a minus sign). It also
+guarded the wrong surface: every wrong claim actually observed -- calling
+unsettled evidence "solid", predicting that scaling "should boost sales",
+inventing a budget cut -- contained no number at all and passed it untouched.
+Those were fixed in the prompt, which is what was doing the work throughout.
+
+KNOWN LIMITATION, and it must be stated in the write-up: nothing now stops a
+fabricated figure from reaching the output. The numbers in the "why" column are
+computed and safe; the sentence beside them is not independently verified.
+
+Any failure -- no key, no network, rate limit, truncation -- still falls back
+to a deterministic template, so the pipeline runs fully offline and always
+produces its column.
+
+Generations are cached by a hash of (task, facts, model): unchanged data
+re-uses its sentence instead of re-generating it. That is what makes this
+layer reproducible -- not the temperature.
+"""
+
+import hashlib
+import json
+import os
+import time
+from dataclasses import dataclass, asdict
+from pathlib import Path
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+from ..config import load_config
+
+_conf = load_config()
+_cfg = _conf["reasoning"]
+_MIN_N = _conf["decision"]["min_n_for_action"]
+
+BASE_URL = _cfg["base_url"]
+MODEL = _cfg["model"]
+API_KEY_ENV = _cfg["api_key_env"]
+MAX_TOKENS = _cfg["max_tokens"]
+TEMPERATURE = _cfg["temperature"]
+MIN_INTERVAL = _cfg["min_interval_seconds"]
+# gpt-oss models only; None for non-reasoning models.
+REASONING_EFFORT = _cfg.get("reasoning_effort")
+CACHE_PATH = Path(_cfg["cache_path"])
+
+LEVEL_NOUN = {"campaign": "campaign", "adset": "audience", "ad": "creative"}
+
+# "exploit"/"explore" are our internal bucket names. Translated here so they
+# never reach a prompt -- a merchant does not know what an exploit is, and the
+# model repeated the word back verbatim when it saw it.
+BUCKET_PLAIN = {
+    "exploit": "gets the main share of the next budget",
+    "explore": "gets a small budget to keep testing",
+    "kill": "stop spending on it",
+    "none": "no budget change either way",
+}
+
+REJECT_LOG = CACHE_PATH.parent / "reasoning_rejected.log"
+
+
+@dataclass
+class DecisionFacts:
+    """The only thing any prompt in this package is allowed to see. No message
+    text, no ids-as-features, no raw data -- just what the pipeline computed."""
+    level: str
+    id: str
+    name: str
+    detail: str
+    action: str
+    bucket: str
+    successes: int
+    n: int
+    excluded: int
+    raw_rate: float
+    score: float | None
+    interval: tuple[float, float] | None
+    baseline: float | None
+    roas: float | None
+    budget_share: float
+    roas_baseline: float | None = None
+    is_fatigued: bool = False
+    is_underperforming: bool = False
+    is_warned: bool = False
+    confidence: float | None = None
+    stop_rule: str | None = None
+
+    @property
+    def is_thin(self) -> bool:
+        """Whether the evidence is actually thin. Decided here because the model
+        cannot judge it: told only "say so if evidence is thin", it called 74
+        conversations -- the second-largest sample in the account -- a small
+        data set."""
+        return self.n < _MIN_N
+
+    def fingerprint(self, task: str) -> str:
+        payload = json.dumps(asdict(self), sort_keys=True, default=str)
+        return hashlib.sha256(f"{task}|{MODEL}|{payload}".encode()).hexdigest()[:16]
+
+
+# -- cache -------------------------------------------------------------------
+
+def load_cache() -> dict:
+    if CACHE_PATH.exists():
+        try:
+            return json.loads(CACHE_PATH.read_text())
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def save_cache(cache: dict) -> None:
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_PATH.write_text(json.dumps(cache, indent=2, ensure_ascii=False))
+
+
+# -- generation --------------------------------------------------------------
+
+def client():
+    """None means no LLM this run; every caller then uses its template."""
+    load_dotenv()
+    key = os.environ.get(API_KEY_ENV)
+    return OpenAI(api_key=key, base_url=BASE_URL) if key else None
+
+
+_last_call = 0.0
+
+
+def generate(*, key: str, system: str, user: str, fallback: str,
+             client, cache: dict, name: str = "") -> tuple[str, str]:
+    """Returns (text, source). source is llm | cache | template:<reason>.
+    The reason matters: without it a run of all-templates looks identical to a
+    run where the LLM worked."""
+    global _last_call
+
+    # The prompt is part of what produced the text, so it has to be part of the
+    # key -- otherwise editing a prompt silently serves the old wording forever.
+    key = hashlib.sha256(f"{key}|{system}".encode()).hexdigest()[:16]
+
+    if key in cache:
+        return cache[key], "cache"
+    if client is None:
+        return fallback, "template:no_key"
+
+    wait = MIN_INTERVAL - (time.monotonic() - _last_call)
+    if wait > 0:
+        time.sleep(wait)
+    _last_call = time.monotonic()
+
+    kwargs = {}
+    if REASONING_EFFORT:
+        # gpt-oss spends hidden reasoning tokens out of max_tokens before it
+        # emits anything visible. This task re-phrases given facts, so there is
+        # nothing to reason about -- keep that spend to a minimum.
+        kwargs["reasoning_effort"] = REASONING_EFFORT
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+            **kwargs,
+        )
+        choice = response.choices[0]
+        text = " ".join((choice.message.content or "").split())
+    except Exception as exc:
+        return fallback, f"template:api_error({type(exc).__name__})"
+
+    if not text:
+        return fallback, "template:empty"
+    if choice.finish_reason == "length" or not text.rstrip().endswith((".", "!", "?")):
+        _log_rejected("truncated", name, text)
+        return fallback, "template:truncated"
+    cache[key] = text
+    return text, "llm"
+
+
+def _log_rejected(reason: str, f_name: str, text: str) -> None:
+    """A discarded generation is invisible otherwise -- the row just shows a
+    template and nothing says why."""
+    REJECT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(REJECT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(f"[{reason}] {f_name}\n  {text}\n")
+
+
+def report(label: str, counts: dict[str, int]) -> None:
+    summary = ", ".join(f"{v} {k}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1]))
+    print(f"{label}: {summary}")
+
+===FILE: src/reasoning/hypothesis.py===
+"""
+Rewrites an explore test's hypothesis in the merchant's language.
+
+The brief asks each explore test to carry "a hypothesis and a stop criterion".
+allocation._build_hypothesis() already produces one deterministically, but it
+restates the posterior ("X's true rate is above its baseline of 0.579") --
+which is the score said twice, not a hypothesis, and it names the id rather
+than the audience or creative it stands for.
+
+This turns it into what a merchant can actually act on: what we suspect, why
+it is worth 10% of the budget to find out, and what result would settle it.
+Nothing here selects the tests or sets their budget -- allocation.py did that
+before this module is reached, and its wording is the fallback below.
+"""
+
+from .llm import (
+    DecisionFacts, LEVEL_NOUN, client, generate,
+    load_cache, report, save_cache,
+)
+
+# ProposedTest is only used for type hints below; imported lazily inside the
+# function to avoid a decision<->reasoning import cycle (new_tests.py does not
+# import this module).
+
+SYSTEM = """You write the hypothesis for one advertising test, for a shop owner who does not know statistics.
+
+The test has ALREADY been chosen and funded. Do not propose a different test or a different \
+budget, and do not question whether it should run.
+
+A hypothesis is a GUESS ABOUT WHY, not a restatement of the result. "It converts better than \
+average" is the result, not a hypothesis. The hypothesis is what it is about THIS kind of \
+audience, or THIS creative angle, that might explain the number -- and what would prove it.
+
+Write, in this order:
+- what specifically about this audience type or creative angle might be causing what we see \
+(say it as a guess: may, might, could)
+- what result would confirm or kill that guess
+
+Rules:
+- 2 sentences. 3 only if the third is doing real work.
+- Name the audience type or creative angle explicitly. A hypothesis that would fit any \
+other test in the account is a failed hypothesis.
+- You have NOT been told what any ad looks like. Never describe imagery, colour, format, \
+video, or wording you were not given -- at campaign level you are told only the goal, and \
+inventing a creative to explain the numbers is the worst thing you can do here.
+- At most one number, and only if it is the number the test turns on.
+- Never invent, derive or estimate a number.
+- Never begin with "We think" or "This test will show".
+- Plain shop language. Never write: exploit, explore, bucket, baseline, posterior, interval, \
+benchmark, model, conversion rate.
+- No bullet points, no headings, no markdown."""
+
+
+def _facts_text(f: DecisionFacts) -> str:
+    noun = LEVEL_NOUN[f.level]
+    # "creative=premium_heritage/default_premium" is a database slug, and the
+    # model quoted it back verbatim. Say it the way a person would.
+    kind = f.detail.split("=", 1)[-1] if "=" in f.detail else f.detail
+    kind = kind.replace("_", " ").replace("/", ", ")
+    ANCHOR = {
+        "campaign": "the GOAL it is set to chase (sales, leads, awareness) and whether that "
+                    "goal matches what these customers actually do. You know nothing about "
+                    "its creatives -- do not guess at them",
+        "adset": "the TYPE OF AUDIENCE it targets and what those people are likely to want",
+        "ad": "the ANGLE of its message -- what it argues, not what it looks like",
+    }
+    lines = [
+        f'What is being tested: a {noun} called "{f.name}"',
+        f"THE KIND OF {noun.upper()} IT IS: {kind}",
+        f"YOUR GUESS MUST BE ABOUT {ANCHOR[f.level]}.",
+        f"How it did: {f.successes} of {f.n} conversations ended in a sale ({f.raw_rate:.0%}), "
+        f"against {f.baseline:.0%} for comparable {noun}s -- close enough that it is not settled",
+    ]
+    if f.is_thin:
+        lines.append("Evidence so far: THIN -- too few conversations to be sure of anything")
+    if f.roas is not None:
+        earning = "earning" if f.roas >= 1 else "losing money at"
+        lines.append(f"Money so far: {earning} {f.roas:.2f} EGP back per 1 EGP spent")
+    if f.is_fatigued:
+        lines.append("It is being tested rather than scaled because the same people keep seeing it and have stopped clicking")
+    if f.is_underperforming:
+        lines.append("It is being tested rather than scaled because each order costs far more than this shop usually pays")
+    if f.stop_rule:
+        lines.append(f"When the test stops: {f.stop_rule}")
+    return "\n".join(lines)
+
+
+def _template(f: DecisionFacts) -> str:
+    noun = LEVEL_NOUN[f.level]
+    reason = f"{f.successes} of {f.n} conversations ended in a sale ({f.raw_rate:.0%}) against a {f.baseline:.0%} bar"
+    if f.is_fatigued:
+        why_here = "it is showing audience fatigue, so it gets a test budget instead of a scale budget"
+    elif f.is_underperforming:
+        why_here = "its cost per order is far above the account norm, so it gets a test budget instead of a scale budget"
+    else:
+        why_here = "there is not yet enough evidence to call it either way"
+    return (
+        f'Testing whether "{f.name}" ({f.detail}) is genuinely different from other {noun}s: '
+        f"{reason}, and {why_here}. "
+        f"Spending {f.budget_share:.0%} of the next budget should settle it."
+    )
+
+
+def build_hypotheses(facts_list: list[DecisionFacts]) -> dict[str, str]:
+    """facts_list is the explore rows only -- everything else has no hypothesis."""
+    if not facts_list:
+        return {}
+
+    llm, cache = client(), load_cache()
+    out: dict[str, str] = {}
+    counts: dict[str, int] = {}
+
+    for f in facts_list:
+        text, source = generate(
+            key=f.fingerprint("hypothesis"), system=SYSTEM, user=_facts_text(f),
+            fallback=_template(f),
+            client=llm, cache=cache, name=f.name,
+        )
+        out[f.id] = text
+        counts[source] = counts.get(source, 0) + 1
+
+    save_cache(cache)
+    report("Hypotheses", counts)
+    return out
+
+
+PROPOSED_SYSTEM = """You write the hypothesis for an advertising test that has NEVER been run before, for a shop owner who does not know statistics.
+
+This pairing -- one audience type shown one creative angle -- has no results yet. It is being \
+proposed for testing, not reviewed after the fact. Do not describe how it "did" or "converted" -- \
+it has not run.
+
+Explain, in plain shop language:
+- what this audience type has done on its own, and what this creative angle has done on its own \
+(each with OTHER pairings), so the owner understands why this untried combination looks promising
+- that the two have never been shown together, so nobody actually knows if they will work as well \
+combined
+- what result over the test period would tell the owner it is worth keeping
+
+Rules:
+- 2-3 sentences.
+- Name the audience type and the creative angle explicitly.
+- At most two numbers, and only the ones that actually justify the guess.
+- Never invent, derive or estimate a number beyond what you are given.
+- Never begin with "We think" or "This test will show".
+- Plain shop language. Never write: exploit, explore, bucket, baseline, posterior, interval, \
+benchmark, model, conversion rate, margin.
+- No bullet points, no headings, no markdown."""
+
+
+def _proposed_facts_text(p) -> str:
+    return (
+        f'What is being tested: showing the "{p.audience_type}" audience a "{p.theme}" creative -- '
+        f"a pairing that has never been run\n"
+        f"What the audience does on its own (with other creatives): converts {p.audience_rate:.0%} "
+        f"across {p.audience_n} conversations\n"
+        f"What the creative angle does on its own (with other audiences): converts {p.theme_rate:.0%} "
+        f"across {p.theme_n} conversations\n"
+        f"Account average, for comparison: {p.baseline:.0%}\n"
+        f"Naive combined guess IF the two effects just add up (not a real prediction, the pairing has "
+        f"never been observed): {p.expected_rate:.0%}"
+    )
+
+
+def rewrite_proposed(proposals: list, baseline: float) -> dict[str, str]:
+    """Rewrites each never-run ProposedTest's hypothesis in merchant language.
+    Its deterministic `hypothesis` field (built in new_tests.py) is the
+    fallback here -- same offline-safe pattern as build_hypotheses(). Runs
+    after propose_new_tests() has picked the candidates; nothing here selects
+    or ranks them."""
+    if not proposals:
+        return {}
+
+    llm, cache = client(), load_cache()
+    out: dict[str, str] = {}
+    counts: dict[str, int] = {}
+
+    for p in proposals:
+        key = f"proposed|{p.audience_type}|{p.theme}|{p.audience_rate}|{p.audience_n}|{p.theme_rate}|{p.theme_n}|{baseline}"
+        text, source = generate(
+            key=key, system=PROPOSED_SYSTEM, user=_proposed_facts_text(p),
+            fallback=p.hypothesis,
+            client=llm, cache=cache, name=p.name,
+        )
+        out[p.id] = text
+        counts[source] = counts.get(source, 0) + 1
+
+    save_cache(cache)
+    report("Proposed-test hypotheses", counts)
+    return out
+
+===FILE: src/reasoning/reasoning.py===
+"""
+Explains an already-made decision in one or two plain sentences.
+
+Reads the decision, never writes it. See src/reasoning/llm.py for the
+boundary, the grounding check and the fallback behaviour shared by every
+task in this package.
+"""
+
+from .llm import (
+    BUCKET_PLAIN, DecisionFacts, LEVEL_NOUN, client, generate,
+    load_cache, report, save_cache,
+)
+
+SYSTEM = """You tell a shop owner what to do about one of their ads, and why.
+
+The decision has ALREADY been made by a statistical model. You are not reviewing it, \
+not second-guessing it, and not suggesting anything different.
+
+The numbers are ALREADY shown to the owner in a separate column next to yours. Repeating \
+them wastes the only line you get. Your job is the part the numbers do not say: what this \
+means for their money, and what they should do next.
+
+Rules:
+- ONE sentence. Two only if the second says something the first could not.
+- At most one number, and only if that single number is what decided it. Prefer none.
+- Never invent, derive or estimate a number.
+- Plain shop language. Never write: exploit, explore, bucket, baseline, posterior, \
+interval, benchmark, model, data set, sample.
+- Lead with the action, not with the evidence.
+- Money and success rate measure different things. NEVER compare EGP returned against a \
+percentage, and never say a money figure is above or below a conversion rate. Compare money \
+only to the typical money figure you are given, and rates only to rates.
+- Only call the evidence thin if you are told it is thin, and never call it solid, strong \
+or conclusive unless you are told the thing was scaled.
+- State only the budget move you are given. Never invent one (do not say shrink, pause, \
+raise or cut unless that is what you were told).
+- Describe what HAS happened. Never predict what scaling will do -- no "should boost \
+sales", no "will increase", no "expect more".
+- No bullet points, no headings, no markdown."""
+
+
+def _facts_text(f: DecisionFacts) -> str:
+    noun = LEVEL_NOUN[f.level]
+    lines = [
+        f'What this is: a {noun} called "{f.name}" ({f.detail})',
+        f"What was decided: {f.action}, and it {BUCKET_PLAIN[f.bucket]}",
+        f"How it did: {f.successes} of {f.n} conversations ended in a sale ({f.raw_rate:.0%})",
+    ]
+    if f.baseline is not None:
+        lines.append(f"What comparable {noun}s manage: {f.baseline:.0%}")
+    if f.roas is not None:
+        earning = "earning" if f.roas >= 1 else "losing money at"
+        money = (f"Money so far: {earning} {f.roas:.2f} EGP back per 1 EGP spent "
+                 "(this is what already happened, not a forecast)")
+        if f.roas_baseline is not None:
+            # Without a money benchmark the model reached for the only other
+            # number nearby -- the conversion-rate bar -- and wrote things like
+            # "1.86 EGP, far above the typical 59% conversion rate".
+            money += f". The typical {noun} here earns back {f.roas_baseline:.2f}"
+        lines.append(money)
+    if f.is_thin:
+        lines.append("How much evidence: TOO FEW conversations to be sure of anything yet")
+    else:
+        lines.append("How much evidence: a usable number of conversations")
+    if f.action == "hold":
+        lines.append(
+            "IMPORTANT -- why it was not scaled: its rate is too close to comparable "
+            f"{noun}s to tell them apart yet. It is NOT proven good. Do not call the "
+            "evidence solid, strong or conclusive."
+        )
+    if f.is_fatigued:
+        lines.append("Why it did not get more money: the same people keep seeing it and have stopped clicking")
+    if f.is_underperforming:
+        lines.append("Why it did not get more money: each order is costing far more than this shop usually pays")
+    return "\n".join(lines)
+
+
+def _template(f: DecisionFacts) -> str:
+    """Deterministic fallback, and what every unfunded row gets. Same brief as
+    the prompt: say the action, not the numbers -- the "why" column already
+    carries those."""
+    if f.action == "scale":
+        head = "Your strongest performer here - give it the biggest share of the next budget"
+    elif f.action == "kill":
+        head = "Stop spending on this one"
+    elif f.bucket == "explore":
+        head = "Not proven either way yet - worth a small budget to find out"
+    else:
+        head = "Leave the spend as it is; nothing here argues for a change"
+
+    if f.is_fatigued:
+        head += ", and it is held back from more because the same people keep seeing it"
+    elif f.is_underperforming:
+        head += ", and each order is costing far more than this shop usually pays"
+    elif f.is_thin:
+        head += ", on too few conversations to be sure"
+    return head + "."
+
+
+def narrate_all(facts_list: list[DecisionFacts]) -> dict[str, str]:
+    llm, cache = client(), load_cache()
+    out: dict[str, str] = {}
+    counts: dict[str, int] = {}
+
+    for f in facts_list:
+        if f.bucket == "none":
+            # No decision was taken on this row, so there is nothing for a
+            # merchant to act on -- the template answers "why no budget?"
+            # without spending a model call on 27 of every 38 rows.
+            text, source = _template(f), "template:not_funded"
+        else:
+            text, source = generate(
+                key=f.fingerprint("narrate"), system=SYSTEM, user=_facts_text(f),
+                fallback=_template(f),
+                client=llm, cache=cache, name=f.name,
+            )
+        out[f.id] = text
+        counts[source] = counts.get(source, 0) + 1
+
+    save_cache(cache)
+    report("Reasoning", counts)
+    return out
+
+===FILE: src/pipeline.py===
+"""
+Full pipeline: Classifier -> Aggregator -> Score Corrector -> Action -> Allocation.
+Runs on all campaigns, adsets, and ads, builds one scoreboard per level, and
+hands the finished rows to src/reporting.py to write/print. Orchestration only
+-- CSV/JSON writing and console printing live in reporting.py; the reasoning
+text lives in src/reasoning/.
+"""
+
+from datetime import datetime
+
+from src.ingestion.conversation_loader import load_conversations
+from src.ingestion.meta_loader import (
+    load_meta, insights_by_ad, insights_by_adset, insights_by_campaign, typical_campaign_days
+)
+from src.ingestion.joiner import join_conversations_to_meta
+from src.scoring.aggregator import raw_rates
+from src.scoring.corrector import compute_posterior, compute_top_level_posterior, estimate_prior_strength
+from src.scoring.revenue import revenue_totals
+from statistics import median
+
+from src.auditing.audit import spend_totals, shrunk_roas_by_id, baseline_cpa as compute_baseline_cpa
+from src.decision.outcome_decision import PROBABILITY_THRESHOLD, decide
+from src.decision.action import resolve_action
+from src.auditing.findings import flag_findings, print_findings
+from src.decision.guardrails import describe_signals
+from src.decision.allocation import build_allocation_plan
+from src.decision.new_tests import propose_new_tests
+from src.reasoning.llm import DecisionFacts
+from src.reasoning.reasoning import narrate_all
+from src.reasoning.hypothesis import build_hypotheses, rewrite_proposed
+from src.reporting import write_csv, write_plan, print_scoreboard
+
+_RUN = f"{datetime.now():%Y%m%d_%H%M%S}"
+OUTPUT_FILE = f"outputs/scoreboard_{_RUN}.csv"
+# Companion to the CSV. The CSV is the brief's deliverable (one row per id);
+# this carries what has no id to sit on -- the budget split and the proposed
+# tests -- so the app has one place to read a whole run from.
+PLAN_FILE = f"outputs/plan_{_RUN}.json"
+
+# exploit-scale first (highest confidence first), then explore, then none, then exploit-kill
+_SORT_ORDER = {("exploit", "scale"): 0, ("explore", "hold"): 1, ("none", "hold"): 2, ("kill", "kill"): 3}
+
+
+def _why(rc, posterior, insights=None) -> list[str]:
+    """Merchant-readable evidence trail for this row -- also where a thin
+    denominator gets flagged.
+
+    The Meta fragment at the end is context, never cause: it is appended after
+    the decision is already made, exactly as the brief's own example row pairs
+    "3 sales / 18 clicks" with "CTR stable over 14 days"."""
+    parts = [f"{rc.successes} success / {rc.n} resolved"]
+    if rc.excluded:
+        parts.append(f"{rc.excluded} excluded (in-flight/adversarial, outcome not known yet)")
+    if posterior is not None:
+        parts.append(f"90% interval [{posterior.interval_low:.3f}, {posterior.interval_high:.3f}]")
+    signals = describe_signals(insights) if insights else None
+    if signals:
+        parts.append(signals)
+    return parts
+
+
+def build_labels(meta, level: str) -> dict[str, dict]:
+    """id -> {name, detail}. `detail` surfaces exactly the thing the brief says
+    each level IS -- campaign is the GOAL (objective), adset is the AUDIENCE
+    (audience_type), ad is the CREATIVE (its theme/angle) -- so a scoreboard
+    row reads as a strategy/audience/creative, not a 20-digit id."""
+    if level == "campaign":
+        return {c.id: {"name": c.name, "detail": f"goal={c.objective}"} for c in meta.campaigns}
+
+    if level == "adset":
+        return {a.id: {"name": a.name, "detail": f"audience={a.audience_type}"} for a in meta.adsets}
+
+    if level == "ad":
+        creatives_by_id = {c.id: c for c in meta.creatives}
+        labels = {}
+        for ad in meta.ads:
+            creative = creatives_by_id.get(ad.creative_id) if ad.creative_id else None
+            detail = f"creative={creative.theme}/{creative.angle}" if creative else "creative=n/a"
+            labels[ad.id] = {"name": ad.name, "detail": detail}
+        return labels
+
+    raise ValueError(f"unknown level: {level}")
+
+
+def build_scoreboard(rates, posteriors, get_baseline, plan, labels, insights_by_id=None):
+    explore_by_id = {e.id: e for e in plan.explore}
+    # budget_share only ever lives on exploit/explore entries; kill/none get 0.
+    budget_share_by_id = {a.id: a.budget_share for a in plan.exploit}
+    budget_share_by_id.update({e.id: e.budget_share for e in plan.explore})
+
+    rows = []
+    for id_, posterior in posteriors.items():
+        rc = rates[id_]
+        # bucket always comes from the plan -- including for posterior=None ids,
+        # which the allocation plan may still be spending explore budget on.
+        bucket = plan.bucket_by_id.get(id_, "none")
+        e = explore_by_id.get(id_)
+        label = labels.get(id_, {"name": id_, "detail": ""})
+
+        baseline = get_baseline(id_)
+        if posterior is None:
+            action = "hold"
+            interval = None
+            score = None
+        else:
+            raw_action, p_better, p_worse = decide(posterior, baseline, rc.n)
+            action = resolve_action(
+                raw_action,
+                is_fatigued=id_ in plan.fatigued,
+                is_underperforming=id_ in plan.underperforming,
+            )
+            interval = (posterior.interval_low, posterior.interval_high)
+            score = posterior.score
+
+        rows.append({
+            "id": id_, "name": label["name"], "detail": label["detail"],
+            "raw_rate": rc.raw_rate, "score": score, "interval": interval,
+            "successes": rc.successes, "n": rc.n, "excluded": rc.excluded, "baseline": baseline,
+            "action": action, "bucket": bucket,
+            "why": _why(rc, posterior, (insights_by_id or {}).get(id_)),
+            "budget_share": budget_share_by_id.get(id_, 0.0),
+            "hypothesis": e.hypothesis if e else None,
+            "stop_rule": e.stop_rule if e else None,
+        })
+
+    rows.sort(key=lambda r: (_SORT_ORDER.get((r["bucket"], r["action"]), 4), -(r["score"] or 0)))
+    return rows
+
+
+def _median_roas(roas: dict[str, float]) -> float | None:
+    """The money benchmark for this level, same shape as the rate baseline.
+    Median, not mean: a couple of outliers at 5x drag a mean somewhere no
+    campaign actually sits (see findings.md)."""
+    return median(roas.values()) if roas else None
+
+
+def _facts_for(r, level, plan, roas, confidence=None, roas_baseline=None):
+    return DecisionFacts(
+        level=level, id=r["id"], name=r["name"], detail=r["detail"],
+        action=r["action"], bucket=r["bucket"],
+        successes=r["successes"], n=r["n"], excluded=r["excluded"],
+        raw_rate=r["raw_rate"], score=r["score"], interval=r["interval"],
+        baseline=r["baseline"], roas=roas.get(r["id"]), roas_baseline=roas_baseline,
+        budget_share=r["budget_share"],
+        is_fatigued=r["id"] in plan.fatigued,
+        is_underperforming=r["id"] in plan.underperforming,
+        is_warned=r["id"] in plan.warned,
+        confidence=confidence, stop_rule=r["stop_rule"],
+    )
+
+
+def attach_reasoning(rows, level, plan, roas):
+    """Fills "reasoning" for every row, and rewrites "hypothesis" for the
+    explore rows. Both run AFTER the decisions are final -- delete these two
+    calls and the scoreboard is unchanged. See src/reasoning/llm.py."""
+    roas_baseline = _median_roas(roas)
+    texts = narrate_all([_facts_for(r, level, plan, roas, roas_baseline=roas_baseline) for r in rows])
+    for r in rows:
+        r["reasoning"] = texts[r["id"]]
+
+    confidence_by_id = {e.id: max(e.p_better, e.p_worse) for e in plan.explore}
+    explore_rows = [r for r in rows if r["bucket"] == "explore"]
+    hypotheses = build_hypotheses([
+        _facts_for(r, level, plan, roas, confidence_by_id.get(r["id"]), roas_baseline)
+        for r in explore_rows
+    ])
+    for r in explore_rows:
+        r["hypothesis"] = hypotheses[r["id"]]
+    return rows
+
+if __name__ == "__main__":
+    convs = load_conversations("data/train/conv_train.json")
+    meta = load_meta("data/train/meta_train.json")
+    joined = join_conversations_to_meta(convs, meta).scoreable
+
+    ad_rates, adset_rates, campaign_rates = raw_rates(joined)
+    adset_to_campaign = {j.adset.id: j.campaign.id for j in joined}
+    ad_to_adset = {j.ad.id: j.adset.id for j in joined}
+
+    # Fit fresh from THIS run's data (all cycles so far) instead of a hardcoded
+    # constant -- how much real rate-heterogeneity exists between adsets (resp.
+    # ads) beyond what sampling noise alone explains sets how hard each level
+    # gets pulled toward its parent. Re-run with more cycles of data and these
+    # move on their own; nothing here needs to change by hand.
+    adset_prior_strength = estimate_prior_strength(adset_rates)
+    ad_prior_strength = estimate_prior_strength(ad_rates)
+    print(f"Fitted prior strength: adset={adset_prior_strength:.2f}, ad={ad_prior_strength:.2f}\n")
+
+    campaign_posteriors = {
+        campaign_id: compute_top_level_posterior(campaign_rc)
+        for campaign_id, campaign_rc in campaign_rates.items()
+    }
+
+    adset_posteriors = {}
+    for adset_id, adset_rc in adset_rates.items():
+        parent = campaign_posteriors[adset_to_campaign[adset_id]]
+        baseline = parent.score if parent else 0.5
+        adset_posteriors[adset_id] = compute_posterior(adset_rc, baseline, adset_prior_strength)
+
+    ad_posteriors = {}
+    for ad_id, ad_rc in ad_rates.items():
+        parent = adset_posteriors[ad_to_adset[ad_id]]
+        baseline = parent.score if parent else 0.5
+        ad_posteriors[ad_id] = compute_posterior(ad_rc, baseline, ad_prior_strength)
+
+    total_successes = sum(rc.successes for rc in campaign_rates.values())
+    total_failures = sum(rc.failures for rc in campaign_rates.values())
+    total_n = total_successes + total_failures
+    overall_baseline = total_successes / total_n if total_n else 0.5
+
+    campaign_baseline = lambda cid: overall_baseline
+    adset_baseline = lambda aid: (
+        campaign_posteriors[adset_to_campaign[aid]].score
+        if campaign_posteriors[adset_to_campaign[aid]] else 0.5
+    )
+    ad_baseline = lambda aid: (
+        adset_posteriors[ad_to_adset[aid]].score
+        if adset_posteriors[ad_to_adset[aid]] else 0.5
+    )
+
+    ad_revenue, adset_revenue, campaign_revenue = revenue_totals(joined)
+    ad_spend, adset_spend, campaign_spend = spend_totals(meta)
+    campaign_roas = shrunk_roas_by_id(campaign_revenue, campaign_spend)
+    adset_roas = shrunk_roas_by_id(adset_revenue, adset_spend)
+    ad_roas = shrunk_roas_by_id(ad_revenue, ad_spend)
+
+    campaign_cpa_inputs = {id_: (campaign_spend.get(id_), rev.n) for id_, rev in campaign_revenue.items()}
+    adset_cpa_inputs = {id_: (adset_spend.get(id_), rev.n) for id_, rev in adset_revenue.items()}
+    ad_cpa_inputs = {id_: (ad_spend.get(id_), rev.n) for id_, rev in ad_revenue.items()}
+
+    campaign_baseline_cpa = compute_baseline_cpa(campaign_revenue, campaign_spend)
+    adset_baseline_cpa = compute_baseline_cpa(adset_revenue, adset_spend)
+    ad_baseline_cpa = compute_baseline_cpa(ad_revenue, ad_spend)
+
+    horizon_days = typical_campaign_days(meta)
+    # Ranked once; each level takes only the slots its live entities left empty.
+    # Adset level only. A proposal is an audience x creative pairing, so it is one
+    # test -- offering the same pairing at campaign and ad level too would fund it
+    # three times over. Campaign level is a choice of objective, which this does
+    # not generate.
+    new_test_candidates = propose_new_tests(joined, meta, overall_baseline, horizon_days)
+    print(f"Test horizon: {horizon_days:.0f} days (median campaign length)\n")
+
+    campaign_plan = build_allocation_plan(
+        campaign_posteriors, campaign_baseline, rates=campaign_rates,
+        daily_insights_by_ad=insights_by_campaign(meta),
+        shrunk_roas=campaign_roas,
+        spend_and_orders=campaign_cpa_inputs, baseline_cpa=campaign_baseline_cpa,
+        horizon_days=horizon_days,
+    )
+    adset_plan = build_allocation_plan(
+        adset_posteriors, adset_baseline, rates=adset_rates,
+        daily_insights_by_ad=insights_by_adset(meta),
+        shrunk_roas=adset_roas,
+        spend_and_orders=adset_cpa_inputs, baseline_cpa=adset_baseline_cpa,
+        horizon_days=horizon_days, proposals=new_test_candidates,
+    )
+    ad_plan = build_allocation_plan(
+        ad_posteriors, ad_baseline, rates=ad_rates,
+        daily_insights_by_ad=insights_by_ad(meta),
+        shrunk_roas=ad_roas,
+        spend_and_orders=ad_cpa_inputs, baseline_cpa=ad_baseline_cpa,
+        horizon_days=horizon_days,
+    )
+
+    campaign_rows = build_scoreboard(
+        campaign_rates, campaign_posteriors, campaign_baseline, campaign_plan, build_labels(meta, "campaign"),
+        insights_by_campaign(meta),
+    )
+    adset_rows = build_scoreboard(
+        adset_rates, adset_posteriors, adset_baseline, adset_plan, build_labels(meta, "adset"),
+        insights_by_adset(meta),
+    )
+    ad_rows = build_scoreboard(
+        ad_rates, ad_posteriors, ad_baseline, ad_plan, build_labels(meta, "ad"),
+        insights_by_ad(meta),
+    )
+
+    attach_reasoning(campaign_rows, "campaign", campaign_plan, campaign_roas)
+    attach_reasoning(adset_rows, "adset", adset_plan, adset_roas)
+    attach_reasoning(ad_rows, "ad", ad_plan, ad_roas)
+
+    # Proposed (never-run) tests have no scoreboard row and no id in `rows`,
+    # so attach_reasoning() above never touches them -- rewrite in place here.
+    if adset_plan.proposed:
+        proposed_hyps = rewrite_proposed(adset_plan.proposed, overall_baseline)
+        for t in adset_plan.proposed:
+            t.hypothesis = proposed_hyps[t.id]
+
+    print(f"\nProbability threshold: {PROBABILITY_THRESHOLD:.2f}\n")
+    print_scoreboard("Campaigns", campaign_rows)
+    print()
+    print_scoreboard("Adsets", adset_rows)
+    print()
+    print_scoreboard("Ads", ad_rows)
+
+    for label, plan in (("Campaign", campaign_plan), ("Adset", adset_plan), ("Ad", ad_plan)):
+        if not plan.proposed:
+            continue
+        # Deliberately not scoreboard rows: these have no id to key on, and the
+        # brief's output contract is one row per existing id.
+        print(f"\n--- {label}: proposed tests (no data yet, not in the scoreboard) ---")
+        for t in plan.proposed:
+            print(f"  {t.name}  [{t.budget_share:.0%} of budget]")
+            print(f"    hypothesis: {t.hypothesis}")
+            print(f"    stop_rule:  {t.stop_rule}")
+
+    for label, rows_, roas_ in (("Campaigns", campaign_rows, campaign_roas),
+                                ("Adsets", adset_rows, adset_roas),
+                                ("Ads", ad_rows, ad_roas)):
+        print()
+        print_findings(label, flag_findings(rows_, roas_))
+
+    write_csv(OUTPUT_FILE, [("campaign", campaign_rows), ("adset", adset_rows), ("ad", ad_rows)])
+    campaign_names = {c.id: c.name for c in meta.campaigns}
+    adset_names = {a.id: a.name for a in meta.adsets}
+    write_plan(
+        PLAN_FILE,
+        [("campaign", campaign_rows, campaign_plan,
+          (campaign_spend, campaign_revenue, campaign_roas), {}),
+         ("adset", adset_rows, adset_plan,
+          (adset_spend, adset_revenue, adset_roas),
+          {a: campaign_names.get(c) for a, c in adset_to_campaign.items()}),
+         ("ad", ad_rows, ad_plan,
+          (ad_spend, ad_revenue, ad_roas),
+          {a: adset_names.get(s_) for a, s_ in ad_to_adset.items()})],
+        horizon_days,
+        {"adset": adset_prior_strength, "ad": ad_prior_strength},
+    )
+    print(f"\nWrote {OUTPUT_FILE} and {PLAN_FILE}")
+
+===FILE: src/scoring/classifier.py===
+from dataclasses import dataclass
+
+from ..ingestion.conversation_loader import Conversation
+from ..ingestion.io_utils import load_json
+from .amounts import get_outcome_amounts
+
+PRODUCTS_PATH = "data/train/products.json"
+
+
+def _min_product_price(path: str = PRODUCTS_PATH) -> float:
+    products = load_json(path)
+    return min(p["price"] for p in products)
+
+
+# Smallest real price in the catalog
+MIN_SUCCESS_AMOUNT = _min_product_price()
+
+
+@dataclass
+class ClassificationResult:
+    conversation_id: str
+    success: bool | None
+
+
+def classify(conversation: Conversation, min_success_amount: float = MIN_SUCCESS_AMOUNT) -> ClassificationResult:
+    net = get_outcome_amounts(conversation).net
+    success = net >= min_success_amount if net is not None else None
+    return ClassificationResult(conversation_id=conversation.id, success=success)
+
+
+if __name__ == "__main__":
+    from ..ingestion.conversation_loader import load_conversations
+
+    convs = load_conversations("data/train/conv_train.json")
+    results = [classify(c) for c in convs]
+
+    scoreable = [r for r in results if r.success is not None]
+    success = sum(r.success for r in scoreable)
+    print(f"Total: {len(results)}, excluded: {len(results) - len(scoreable)}, scoreable: {len(scoreable)}, success:{success}, failure: {len(scoreable)-success}")
+===FILE: src/scoring/corrector.py===
+from dataclasses import dataclass
+
+from scipy.stats import beta as beta_dist
+
+from .aggregator import RawCounts
+from ..config import load_config
+
+_cfg = load_config()["scoring"]
+
+# Fallback prior strength (alpha+beta), used only when a level doesn't have
+# enough groups to fit one from data -- see estimate_prior_strength() below,
+# which is what actually drives shrinkage in the pipeline now.
+PRIOR_STRENGTH = _cfg["prior_strength"]
+PRIOR_STRENGTH_MIN_GROUP_N = _cfg["prior_strength_min_group_n"]
+PRIOR_STRENGTH_MIN_GROUPS = _cfg["prior_strength_min_groups"]
+PRIOR_STRENGTH_FLOOR = _cfg["prior_strength_floor"]
+PRIOR_STRENGTH_CEILING = _cfg["prior_strength_ceiling"]
+
+# A common standard choice (convention)
+CREDIBLE_INTERVAL = 0.90
+
+# Jeffreys prior, used for top-level items with no parent to shrink toward
+UNINFORMATIVE_ALPHA = 0.5
+UNINFORMATIVE_BETA = 0.5
+
+
+@dataclass
+class Posterior:
+    score: float
+    interval_low: float
+    interval_high: float
+    alpha_post: float
+    beta_post: float
+    precision: float
+
+
+def _build_posterior(alpha_post: float, beta_post: float) -> Posterior:
+    score = alpha_post / (alpha_post + beta_post)
+    lower_q = (1 - CREDIBLE_INTERVAL) / 2
+    interval_low = beta_dist.ppf(lower_q, alpha_post, beta_post)
+    interval_high = beta_dist.ppf(1 - lower_q, alpha_post, beta_post)
+
+    # Precision = inverse variance of the Beta posterior
+    # Grows with prior_strength and n (alpha_post + beta_post)
+    variance = (alpha_post * beta_post) / (
+        (alpha_post + beta_post) ** 2 * (alpha_post + beta_post + 1)
+    )
+    precision = 1 / variance
+
+    return Posterior(score=score, interval_low=interval_low, interval_high=interval_high,
+                      alpha_post=alpha_post, beta_post=beta_post, precision=precision)
+
+
+def compute_top_level_posterior(item: RawCounts) -> Posterior | None:
+    if item.n == 0:
+        return None
+
+    alpha_post = UNINFORMATIVE_ALPHA + item.successes
+    beta_post = UNINFORMATIVE_BETA + item.failures
+    return _build_posterior(alpha_post, beta_post)
+
+
+def compute_posterior(child: RawCounts, parent_rate: float, prior_strength: float) -> Posterior | None:
+    if child.n == 0:
+        return None
+
+    alpha_prior = parent_rate * prior_strength
+    beta_prior = (1 - parent_rate) * prior_strength
+
+    alpha_post = alpha_prior + child.successes
+    beta_post = beta_prior + child.failures
+    return _build_posterior(alpha_post, beta_post)
+
+
+def estimate_prior_strength(
+    raw_counts: dict[str, RawCounts],
+    *,
+    min_group_n: int = PRIOR_STRENGTH_MIN_GROUP_N,
+    min_groups: int = PRIOR_STRENGTH_MIN_GROUPS,
+    floor: float = PRIOR_STRENGTH_FLOOR,
+    ceiling: float = PRIOR_STRENGTH_CEILING,
+    fallback: float = PRIOR_STRENGTH,
+) -> float:
+    """
+    Method-of-moments estimate of the Beta prior's strength (alpha+beta),
+    fit fresh from this level's own raw rates (e.g. every ad's RawCounts this
+    cycle) instead of a hardcoded constant. Re-run on more cycles of data
+    (past + new), the estimate moves -- this is the "dynamic muscle" plugged
+    into the static shrinkage formula in compute_posterior().
+
+    The idea: if every group in `raw_counts` truly shared one underlying rate
+    p_bar, the only reason each group's own raw_rate would differ from p_bar
+    is Binomial sampling noise (~p_bar*(1-p_bar)/n for a group with n
+    observations). Whatever variance across groups is LEFT OVER once that
+    expected noise is subtracted out is real, prior-worthy heterogeneity.
+    Less real heterogeneity -> a group's own point estimate deserves less
+    trust and should be pulled harder toward p_bar -> higher prior strength.
+
+    For a Beta(alpha, beta) prior with mean p_bar, Var = p_bar*(1-p_bar) /
+    (alpha+beta+1). Solving for alpha+beta given the estimated real
+    between-group variance gives this function's return value.
+
+    Falls back to `fallback` when there aren't enough groups with enough data
+    to estimate anything meaningful from (see min_group_n / min_groups).
+    """
+    groups = [rc for rc in raw_counts.values() if rc.n >= min_group_n]
+    if len(groups) < min_groups:
+        return fallback
+
+    total_successes = sum(rc.successes for rc in groups)
+    total_n = sum(rc.n for rc in groups)
+    if total_n == 0:
+        return fallback
+    p_bar = total_successes / total_n
+
+    k = len(groups)
+    observed_variance = sum((rc.raw_rate - p_bar) ** 2 for rc in groups) / (k - 1)
+
+    mean_n = total_n / k
+    expected_noise = p_bar * (1 - p_bar) / mean_n if mean_n else 0.0
+
+    between_group_variance = observed_variance - expected_noise
+    if between_group_variance <= 0:
+        # No detectable real heterogeneity above sampling noise: the data is
+        # saying "trust the shared rate, distrust individual point estimates"
+        # -- i.e. maximal shrinkage, capped at `ceiling` rather than infinity.
+        return ceiling
+
+    prior_strength = p_bar * (1 - p_bar) / between_group_variance - 1
+    return max(floor, min(ceiling, prior_strength))
+
+
+# Demo removed -- it rebuilt the whole posterior chain from scratch just to
+# print one example, drifting out of sync with the real pipeline in the
+# process (see auditing/findings.py). To inspect one id end-to-end, run:
+#   python3 -m scripts.inspect --level <campaign|adset|ad> --id <id>
+
+===FILE: src/scoring/aggregator.py===
+from dataclasses import dataclass
+
+from .classifier import classify
+from ..ingestion.joiner import JoinedConversation, group_by_level
+
+
+@dataclass
+class RawCounts:
+    successes: int
+    failures: int
+    n: int
+    excluded: int  # conversations we couldn't classify (stuck_pending/active/adversarial) - outcome not known yet
+    raw_rate: float | None
+
+
+def _summarize(conversations) -> RawCounts:
+    results = [classify(c) for c in conversations]
+    scored = [r for r in results if r.success is not None]
+    successes = sum(1 for r in scored if r.success)
+    failures = len(scored) - successes
+    n = len(scored)
+    excluded = len(results) - n
+    return RawCounts(
+        successes=successes, failures=failures, n=n, excluded=excluded,
+        raw_rate=successes / n if n else None,
+    )
+
+
+def raw_rates(joined: list[JoinedConversation]) -> tuple[dict[str, RawCounts], dict[str, RawCounts], dict[str, RawCounts]]:
+    by_ad, by_adset, by_campaign = group_by_level(joined)
+
+    ad_rates = {ad_id: _summarize(convs) for ad_id, convs in by_ad.items()}
+    adset_rates = {adset_id: _summarize(convs) for adset_id, convs in by_adset.items()}
+    campaign_rates = {c_id: _summarize(convs) for c_id, convs in by_campaign.items()}
+
+    return ad_rates, adset_rates, campaign_rates
+
+
+if __name__ == "__main__":
+    from ..ingestion.conversation_loader import load_conversations
+    from ..ingestion.meta_loader import load_meta
+    from ..ingestion.joiner import join_conversations_to_meta
+
+    convs = load_conversations("data/train/conv_train.json")
+    meta = load_meta("data/train/meta_train.json")
+    joined = join_conversations_to_meta(convs, meta).scoreable
+
+    ad_rates, adset_rates, campaign_rates = raw_rates(joined)
+
+    print(f"Ads: {len(ad_rates)}, Adsets: {len(adset_rates)}, Campaigns: {len(campaign_rates)}")
+    print("-"*50)
+
+    sample_ad_id = sorted(ad_rates.keys())[0]
+    jc = next(j for j in joined if j.ad.id == sample_ad_id)
+    adset_id = jc.adset.id
+    campaign_id = jc.campaign.id
+
+    print(f"Campaign {campaign_id}: {campaign_rates[campaign_id]}")
+    print(f"   Adset {adset_id}: {adset_rates[adset_id]}")
+    print(f"      Ad {sample_ad_id}: {ad_rates[sample_ad_id]}")
+
+===FILE: src/scoring/__init__.py===
+
+===FILE: src/scoring/revenue.py===
+from dataclasses import dataclass
+
+from .amounts import get_outcome_amounts
+from ..ingestion.joiner import group_by_level
+
+
+@dataclass
+class RevenueSummary:
+    total_revenue: float
+    avg_revenue: float | None
+    n: int
+
+
+def conversation_revenue(conversation) -> float | None:
+    return get_outcome_amounts(conversation).net
+
+
+def summarize_revenue(conversations) -> RevenueSummary:
+    amounts = [r for c in conversations if (r := conversation_revenue(c)) is not None]
+    total_revenue = sum(amounts)
+    n = len(amounts)
+    avg_revenue = total_revenue / n if n else None
+    return RevenueSummary(total_revenue=total_revenue, avg_revenue=avg_revenue, n=n)
+
+
+def revenue_totals(joined) -> tuple[dict, dict, dict]:
+    by_ad, by_adset, by_campaign = group_by_level(joined)
+
+    ad_revenue = {ad_id: summarize_revenue(convs) for ad_id, convs in by_ad.items()}
+    adset_revenue = {adset_id: summarize_revenue(convs) for adset_id, convs in by_adset.items()}
+    campaign_revenue = {c_id: summarize_revenue(convs) for c_id, convs in by_campaign.items()}
+
+    return ad_revenue, adset_revenue, campaign_revenue
+
+
+if __name__ == "__main__":
+    from ..ingestion.conversation_loader import load_conversations
+    from ..ingestion.meta_loader import load_meta
+    from ..ingestion.joiner import join_conversations_to_meta
+
+    convs = load_conversations("data/train/conv_train.json")
+    meta = load_meta("data/train/meta_train.json")
+    joined = join_conversations_to_meta(convs, meta).scoreable
+
+    ad_revenue, adset_revenue, campaign_revenue = revenue_totals(joined)
+
+    print(f"Ads: {len(ad_revenue)}, Adsets: {len(adset_revenue)}, Campaigns: {len(campaign_revenue)}")
+    for label, rev_dict in [("Campaigns", campaign_revenue), ("Adsets", adset_revenue), ("Ads", ad_revenue)]:
+        print(f"--- {label} ---")
+        for id_, rev in rev_dict.items():
+            avg = f"{rev.avg_revenue:.2f}" if rev.avg_revenue is not None else "n/a"
+            print(f"{id_:<24} total={rev.total_revenue:>10.2f}  avg={avg:<8} n={rev.n}")
+===FILE: src/scoring/amounts.py===
+from dataclasses import dataclass
+
+from ..ingestion.conversation_loader import Conversation
+
+
+@dataclass
+class OutcomeAmounts:
+    net: float | None
+
+
+def get_outcome_amounts(conversation: Conversation) -> OutcomeAmounts:
+    outcome_type = conversation.outcome.type
+    outcome = conversation.outcome.raw
+
+    if outcome_type == "delivered":
+        return OutcomeAmounts(net=outcome.get("total", 0))
+
+    if outcome_type in ("ghosted", "cancelled"):
+        return OutcomeAmounts(net=0.0)
+
+    if outcome_type == "refunded":
+        total = outcome.get("total", 0)
+        refunded_amount = outcome.get("refunded_amount", 0)
+        return OutcomeAmounts(net=total - refunded_amount)
+
+    # stuck_pending, active, adversarial -> excluded
+    return OutcomeAmounts(net=None)
+
+
+if __name__ == "__main__":
+    from ..ingestion.conversation_loader import load_conversations
+
+    convs = load_conversations("data/train/conv_train.json")
+    for c in convs[:25]:
+        amounts = get_outcome_amounts(c)
+        print(f"{c.id} | outcome={c.outcome.type:12s} | net={amounts.net}")
+===FILE: src/decision/stop_rules.py===
+"""
+"How much more spend, and how long, before an explore test can be called" --
+commercial, CPA-guardrail based (see EXPLORE_EXPLOIT_REASONING.md #3), not a
+statistical resolution of the WhatsApp conversion rate.
+
+The earlier design projected the Beta posterior forward assuming the observed
+rate holds steady and reported "N more conversations" -- a unit the merchant
+has no lever over, and a number that swings hard on the next single
+conversation given how few an explore test usually has. The line here is
+something the merchant actually controls: spend and days, gated on the same
+CPA thresholds the scale/kill guardrail already uses (guardrails.py), so a
+running test and the guardrail that could later veto a scale never disagree
+about what "underperforming" means.
+"""
+
+from ..ingestion.meta_loader import DailyInsight
+from ..config import load_config
+
+_cpa_cfg = load_config()["cpa"]
+MIN_SPEND_MULTIPLIER = _cpa_cfg["min_spend_multiplier"]
+CPA_STOP_MULTIPLIER = _cpa_cfg["stop_multiplier"]
+
+
+def daily_spend_rate(insights: list[DailyInsight]) -> float:
+    """This test's own recent spend pace. 0 means we cannot express the stop
+    rule in days."""
+    active = [i for i in insights if (i.impressions or 0) > 0]
+    if not active:
+        return 0.0
+    total_spend = sum(i.spend or 0.0 for i in active)
+    active_days = len({i.date_start for i in active})
+    return total_spend / active_days if active_days else 0.0
+
+
+def resolves_in_time(
+    spend: float | None, baseline_cpa: float | None, per_day: float, horizon_days: float,
+) -> bool:
+    """Whether this test can even reach the spend needed to judge it
+    (min_spend_multiplier x baseline CPA) inside one campaign's length.
+    No baseline CPA to compare against, or already past the judging line,
+    both count as "yes" -- there's either nothing to check yet or the line
+    is already crossed."""
+    if baseline_cpa is None:
+        return True
+    needed = max(0.0, baseline_cpa * MIN_SPEND_MULTIPLIER - (spend or 0.0))
+    if needed <= 0:
+        return True
+    if not per_day:
+        return False
+    return needed / per_day <= horizon_days
+
+
+def build_stop_rule(
+    spend: float | None, orders: int, baseline_cpa: float | None,
+    insights: list[DailyInsight],
+) -> str:
+    if baseline_cpa is None:
+        return "No account-level CPA baseline to compare against yet -- cannot set a spend-based stop line."
+
+    spend = spend or 0.0
+    per_day = daily_spend_rate(insights)
+    judge_line = baseline_cpa * MIN_SPEND_MULTIPLIER
+    stop_line = baseline_cpa * CPA_STOP_MULTIPLIER
+
+    if spend >= judge_line:
+        if orders == 0:
+            return (
+                f"Already spent {spend:,.0f} (past the {judge_line:,.0f} needed to judge) "
+                "with zero orders. Stop now."
+            )
+        cpa = spend / orders
+        if cpa > stop_line:
+            return (
+                f"Already spent {spend:,.0f} at a CPA of {cpa:,.0f}, above the "
+                f"{stop_line:,.0f} stop line ({CPA_STOP_MULTIPLIER}x baseline). Stop now."
+            )
+        cpa = spend / orders
+        return (
+            f"Spent {spend:,.0f} so far ({orders} order{'s' if orders != 1 else ''}, CPA "
+            f"{cpa:,.0f}), past the {judge_line:,.0f} needed to judge and still under the "
+            f"{stop_line:,.0f} CPA stop line -- keep it running and re-check after the next "
+            "few orders."
+        )
+
+    remaining = judge_line - spend
+    stop_clause = (
+        f"Stop it then if it still has zero orders, or if its CPA is above "
+        f"{stop_line:,.0f} ({CPA_STOP_MULTIPLIER}x baseline)."
+    )
+    if not per_day:
+        return (
+            f"Needs {remaining:,.0f} more spend (no recent delivery pace to convert that "
+            f"into days) before there is enough spend to judge. {stop_clause}"
+        )
+    days = round(remaining / per_day)
+    return (
+        f"Give it about {days:,} more day{'s' if days != 1 else ''} at its recent pace "
+        f"({remaining:,.0f} more spend) before judging. {stop_clause}"
+    )
+
+===FILE: src/decision/explore_selection.py===
+"""
+Given every candidate that could end up funded as a test (the explore pool
+built in allocation.py -- untested holds, fatigue-vetoed scales, CPA-vetoed
+scales -- plus never-run combinations from new_tests.py), decide which ones
+actually get a slot and a budget share, and write each one's hypothesis and
+stop rule.
+
+This is a different responsibility from classification (build_allocation_plan
+in allocation.py deciding whether an id is scale/kill/explore-candidate in
+the first place): here every candidate is already agreed to be a candidate,
+and the only questions left are "can it even be resolved in time", "which
+handful is worth the limited explore budget", and "what does the resulting
+test say". Split out of allocation.py, which used to carry this alongside the
+classification loop.
+"""
+
+from dataclasses import dataclass, field
+
+from .guardrails import (
+    CPA_STOP_MULTIPLIER,
+    FATIGUE_CTR_DROP_THRESHOLD,
+    FATIGUE_FREQUENCY_THRESHOLD,
+    MIN_SPEND_MULTIPLIER,
+)
+from .stop_rules import build_stop_rule, daily_spend_rate, resolves_in_time
+from .new_tests import ProposedTest
+from ..scoring.corrector import Posterior
+
+
+@dataclass
+class ExploreExperiment:
+    id: str
+    name: str
+    hypothesis: str
+    stop_rule: str
+    budget_share: float
+    p_better: float
+    p_worse: float
+
+
+@dataclass
+class ExploreSelection:
+    kept: list[ExploreExperiment] = field(default_factory=list)
+    proposed: list[ProposedTest] = field(default_factory=list)
+    unresolvable: list[str] = field(default_factory=list)
+    dropped_from_explore: list[str] = field(default_factory=list)  # includes unresolvable
+
+
+def _priority(id_: str, posterior: Posterior | None, roas) -> float:
+    # Optimistic (UCB-style) ranking across ALL explore candidates, whatever
+    # got them there (no data yet, held-at-hold, fatigue-vetoed, CPA-vetoed):
+    # how good could this plausibly be, weighted by money riding on it.
+    upper = posterior.interval_high if posterior is not None else 1.0
+    return upper * roas(id_)
+
+
+def _build_hypothesis(id_: str, posterior: Posterior, baseline: float, p_better: float, p_worse: float) -> str:
+    direction = "above" if p_better >= p_worse else "below"
+    confidence = max(p_better, p_worse)
+    return (
+        f"{id_}'s true rate is {direction} its baseline of {baseline:.3f} "
+        f"(currently {confidence:.0%} confident, interval "
+        f"[{posterior.interval_low:.3f}, {posterior.interval_high:.3f}])."
+    )
+
+
+def _hypothesis_for(c: dict, baseline_cpa: float | None) -> str:
+    id_, posterior, baseline = c["id"], c["posterior"], c["baseline"]
+    p_better, p_worse = c["p_better"], c["p_worse"]
+
+    if c["reason"] == "hold" and posterior is None:
+        return f"{id_} has no data yet; true rate relative to baseline {baseline:.3f} is unknown."
+
+    if c["reason"] == "fatigued":
+        return (
+            f"{id_} would qualify for scale (P(better)={p_better:.0%} vs baseline "
+            f"{baseline:.3f}), but is held back by the frequency+CTR fatigue guardrail: "
+            f"frequency >= {FATIGUE_FREQUENCY_THRESHOLD} with a CTR drop >= "
+            f"{FATIGUE_CTR_DROP_THRESHOLD:.0%} vs its own first week."
+        )
+
+    if c["reason"] == "underperforming":
+        spend, orders = c["spend"], c["orders"]
+        cpa = f"{spend / orders:.2f}" if orders else "undefined (0 orders)"
+        return (
+            f"{id_} would qualify for scale (P(better)={p_better:.0%} vs baseline "
+            f"{baseline:.3f}), but is held back by the CPA stop-rule guardrail: "
+            f"CPA={cpa} vs baseline CPA {baseline_cpa:.2f} "
+            f"(stop threshold {CPA_STOP_MULTIPLIER}x after spend >= "
+            f"{MIN_SPEND_MULTIPLIER}x baseline CPA)."
+        )
+
+    return _build_hypothesis(id_, posterior, baseline, p_better, p_worse)
+
+
+def select_explore_tests(
+    explore_pool: list[dict],
+    rates,
+    daily_insights_by_ad,
+    roas,
+    baseline_cpa: float | None,
+    horizon_days: float,
+    proposals: list[ProposedTest] | None,
+    max_tests: int,
+    explore_share: float,
+    spend_and_orders: dict | None = None,
+) -> ExploreSelection:
+    """rates/daily_insights_by_ad/roas mirror what build_allocation_plan already
+    has: rates is {id: RawCounts}, daily_insights_by_ad is {id: [DailyInsight]}
+    or None, roas is a callable id -> float (allocation.py's `_roas` closure).
+    spend_and_orders is {id: (spend, orders)}, the same dict the CPA guardrail
+    in allocation.py uses -- the stop rule here is judged on the same numbers."""
+
+    def _spend_orders(id_: str) -> tuple[float | None, int]:
+        return (spend_and_orders or {}).get(id_, (None, 0))
+
+    selection = ExploreSelection()
+
+    # 1. Drop anything that can't even reach the spend needed to judge it
+    # (min_spend_multiplier x baseline CPA) inside one campaign's length --
+    # a test that never gets there is not a test, it is just spend.
+    resolvable = []
+    for c in explore_pool:
+        spend, _ = _spend_orders(c["id"])
+        per_day = daily_spend_rate((daily_insights_by_ad or {}).get(c["id"], []))
+        if resolves_in_time(spend, baseline_cpa, per_day, horizon_days):
+            resolvable.append(c)
+        else:
+            selection.unresolvable.append(c["id"])
+
+    # 2. Rank the whole resolvable pool once, cap once at max_tests.
+    resolvable.sort(key=lambda c: _priority(c["id"], c["posterior"], roas), reverse=True)
+    kept, dropped = resolvable[:max_tests], resolvable[max_tests:]
+    selection.dropped_from_explore = [c["id"] for c in dropped] + selection.unresolvable
+
+    # 3. Whatever live entities didn't fill goes to combinations never run.
+    free_slots = max_tests - len(kept)
+    selection.proposed = list(proposals or [])[:free_slots]
+
+    total_tests = len(kept) + len(selection.proposed)
+    per_experiment_share = explore_share / total_tests if total_tests else 0.0
+    for proposal in selection.proposed:
+        proposal.budget_share = per_experiment_share
+
+    # 4. Write the hypothesis + stop rule for each surviving candidate.
+    for c in kept:
+        id_ = c["id"]
+        spend, orders = _spend_orders(id_)
+        selection.kept.append(
+            ExploreExperiment(
+                id=id_, name=f"test_{id_}", hypothesis=_hypothesis_for(c, baseline_cpa),
+                stop_rule=build_stop_rule(
+                    spend, orders, baseline_cpa,
+                    (daily_insights_by_ad or {}).get(id_, []),
+                ),
+                budget_share=per_experiment_share, p_better=c["p_better"], p_worse=c["p_worse"],
+            )
+        )
+
+    return selection
+
+===FILE: src/decision/__init__.py===
+
+===FILE: src/decision/action.py===
+def resolve_action(
+    raw_action: str,
+    *,
+    is_fatigued: bool = False,
+    is_underperforming: bool = False,
+) -> str:
+    # decide() (conversation.py) already gates scale/kill on evidence (n vs
+    # MIN_N_FOR_ACTION, probability vs PROBABILITY_THRESHOLD). Guardrails here
+    # only ever push a "scale" down to "hold" -- they never create or upgrade
+    # a scale/kill call.
+    if raw_action == "scale" and (is_fatigued or is_underperforming):
+        return "hold"
+    return raw_action
+
+
+# Demo removed -- it rebuilt the whole posterior chain from scratch just to
+# print one example, drifting out of sync with the real pipeline in the
+# process (see auditing/findings.py). To inspect one id end-to-end, run:
+#   python3 -m scripts.inspect --level <campaign|adset|ad> --id <id>
+
+===FILE: src/decision/guardrails.py===
+from dataclasses import dataclass
+from ..ingestion.meta_loader import DailyInsight
+from ..config import load_config
+
+_cfg = load_config()
+_fatigue_cfg = _cfg["fatigue"]
+_cpa_cfg = _cfg["cpa"]
+
+# Config-driven (config.yaml: fatigue.*). Grounded thresholds (see reasoning
+# log): frequency >= threshold = fatigue zone (cold/prospecting audiences),
+# warning_frequency_threshold-threshold = warning only, no veto. CTR drop
+# compares an ad's own first vs most recent FATIGUE_WINDOW_DAYS.
+FATIGUE_FREQUENCY_THRESHOLD = _fatigue_cfg["frequency_threshold"]
+FATIGUE_WARNING_FREQUENCY_THRESHOLD = _fatigue_cfg["warning_frequency_threshold"]
+FATIGUE_CTR_DROP_THRESHOLD = _fatigue_cfg["ctr_drop_threshold"]
+FATIGUE_WINDOW_DAYS = _fatigue_cfg["window_days"]
+FATIGUE_MIN_DAYS_FOR_CTR_CHECK = FATIGUE_WINDOW_DAYS * 2
+
+# Config-driven (config.yaml: cpa.*). Grounded in documented Meta pause
+# practice (ROASPIG/Adamigo): don't judge CPA until spend >= min_spend_multiplier
+# x the baseline CPA, then flag if CPA > stop_multiplier x baseline (or spend
+# happened with zero orders at all).
+MIN_SPEND_MULTIPLIER = _cpa_cfg["min_spend_multiplier"]
+CPA_STOP_MULTIPLIER = _cpa_cfg["stop_multiplier"]
+
+
+def _avg(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _recent_avg_frequency(
+    daily_insights: list[DailyInsight], window_days: int = FATIGUE_WINDOW_DAYS
+) -> float | None:
+    recent = daily_insights[-window_days:]
+    freqs = [i.frequency for i in recent if i.frequency is not None]
+    return _avg(freqs)
+
+
+def is_fatigued(daily_insights: list[DailyInsight]) -> bool:
+    if len(daily_insights) < FATIGUE_MIN_DAYS_FOR_CTR_CHECK:
+        return False
+
+    avg_frequency = _recent_avg_frequency(daily_insights)
+    if avg_frequency is None or avg_frequency < FATIGUE_FREQUENCY_THRESHOLD:
+        return False
+
+    first_window_ctrs = [i.ctr for i in daily_insights[:FATIGUE_WINDOW_DAYS] if i.ctr is not None]
+    last_window_ctrs = [i.ctr for i in daily_insights[-FATIGUE_WINDOW_DAYS:] if i.ctr is not None]
+    if not first_window_ctrs or not last_window_ctrs:
+        return False
+
+    first_avg = _avg(first_window_ctrs)
+    last_avg = _avg(last_window_ctrs)
+    if first_avg <= 0:
+        return False
+
+    ctr_drop = (first_avg - last_avg) / first_avg
+    return ctr_drop >= FATIGUE_CTR_DROP_THRESHOLD
+
+
+def frequency_warning(daily_insights: list[DailyInsight]) -> bool:
+    if len(daily_insights) < FATIGUE_WINDOW_DAYS:
+        return False
+
+    avg_frequency = _recent_avg_frequency(daily_insights)
+    if avg_frequency is None:
+        return False
+
+    return FATIGUE_WARNING_FREQUENCY_THRESHOLD <= avg_frequency < FATIGUE_FREQUENCY_THRESHOLD
+
+
+def is_underperforming(spend: float | None, orders: int, baseline_cpa: float | None) -> bool:
+    if spend is None or baseline_cpa is None:
+        return False
+    if spend < baseline_cpa * MIN_SPEND_MULTIPLIER:
+        return False
+    if orders == 0:
+        return True
+    return (spend / orders) > baseline_cpa * CPA_STOP_MULTIPLIER
+
+
+if __name__ == "__main__":
+    from ..ingestion.meta_loader import load_meta, insights_by_ad
+
+    meta = load_meta("data/train/meta_train.json")
+    by_ad = insights_by_ad(meta)
+
+    for ad_id in sorted(by_ad.keys()):
+        insights = by_ad[ad_id]
+        avg_frequency = _recent_avg_frequency(insights)
+        freq_str = f"{avg_frequency:.2f}" if avg_frequency is not None else "n/a"
+        print(
+            f"{ad_id}: days={len(insights):<3} avg_frequency={freq_str:<6} "
+            f"fatigued={is_fatigued(insights)} warning={frequency_warning(insights)}"
+        )
+
+
+@dataclass
+class MetaSignals:
+    """What Meta saw, for the record only.
+
+    These never enter a score or a decision -- the boundary this project holds
+    is that the probability comes from WhatsApp outcomes alone. They are quoted
+    in the evidence trail because the brief's own example row does exactly that
+    ("CTR stable over 14 days" sits beside "3 sales / 18 clicks"), and because a
+    guardrail that vetoed a scale should be able to show its working.
+
+    Computed over the SAME windows is_fatigued() uses, so the numbers a merchant
+    reads are the numbers the veto acted on."""
+    days: int
+    avg_frequency: float | None
+    ctr_change: float | None  # negative = CTR fell against the ad's own first week
+
+
+def meta_signals(daily_insights: list[DailyInsight]) -> MetaSignals:
+    days = len(daily_insights)
+    avg_frequency = _recent_avg_frequency(daily_insights)
+
+    ctr_change = None
+    if days >= FATIGUE_MIN_DAYS_FOR_CTR_CHECK:
+        first = [i.ctr for i in daily_insights[:FATIGUE_WINDOW_DAYS] if i.ctr is not None]
+        last = [i.ctr for i in daily_insights[-FATIGUE_WINDOW_DAYS:] if i.ctr is not None]
+        if first and last:
+            first_avg, last_avg = _avg(first), _avg(last)
+            if first_avg:
+                ctr_change = (last_avg - first_avg) / first_avg
+
+    return MetaSignals(days=days, avg_frequency=avg_frequency, ctr_change=ctr_change)
+
+
+def describe_signals(daily_insights: list[DailyInsight]) -> str | None:
+    """One short fragment for the evidence trail, in the brief's own style."""
+    signals = meta_signals(daily_insights)
+    if signals.days < FATIGUE_MIN_DAYS_FOR_CTR_CHECK:
+        return f"only {signals.days} days of delivery, too short to read a trend" if signals.days else None
+
+    parts = []
+    if signals.avg_frequency is not None:
+        parts.append(f"frequency {signals.avg_frequency:.1f}")
+    if signals.ctr_change is not None:
+        if abs(signals.ctr_change) < 0.10:
+            parts.append(f"CTR stable over {signals.days} days")
+        else:
+            direction = "down" if signals.ctr_change < 0 else "up"
+            parts.append(f"CTR {direction} {abs(signals.ctr_change):.0%} vs first week")
+    return ", ".join(parts) or None
+
+===FILE: src/decision/allocation.py===
+from dataclasses import dataclass, field
+
+from .outcome_decision import decide
+from .guardrails import FATIGUE_FREQUENCY_THRESHOLD, frequency_warning, is_fatigued, is_underperforming
+from .explore_selection import ExploreExperiment, select_explore_tests
+from ..ingestion.meta_loader import DailyInsight
+from ..scoring.aggregator import RawCounts
+
+from ..scoring.corrector import Posterior
+from .new_tests import ProposedTest
+from ..config import load_config
+
+_alloc_cfg = load_config()["allocation"]
+
+# Config-driven (config.yaml: allocation.*). The brief's own 70/30 rule says
+# this split should move with confidence and season -- these are still fixed
+# constants for now, just centralized; see NEW_FINDINGS for the follow-up to
+# make them adaptive.
+EXPLOIT_SHARE = _alloc_cfg["exploit_share"]
+EXPLORE_SHARE = _alloc_cfg["explore_share"]
+
+# ~2-3 explore tests, hard cap. Fatigued/underperforming scale-candidates and
+# ordinary "hold" candidates all compete for the SAME cap -- see
+# select_explore_tests() in explore_selection.py.
+MAX_EXPLORE_TESTS = _alloc_cfg["max_explore_tests"]
+
+
+@dataclass
+class ExploitAllocation:
+    id: str
+    action: str
+    weight: float
+    budget_share: float
+    p_better: float
+    p_worse: float
+
+
+@dataclass
+class AllocationPlan:
+    exploit: list[ExploitAllocation] = field(default_factory=list)
+    explore: list[ExploreExperiment] = field(default_factory=list)
+    kill: list[str] = field(default_factory=list)
+    proposed: list[ProposedTest] = field(default_factory=list)
+    unresolvable: list[str] = field(default_factory=list)
+    bucket_by_id: dict[str, str] = field(default_factory=dict)
+    fatigued: list[str] = field(default_factory=list)
+    underperforming: list[str] = field(default_factory=list)
+    warned: list[str] = field(default_factory=list)
+    dropped_from_explore: list[str] = field(default_factory=list)
+
+
+def _classify(posterior: Posterior | None, baseline: float, n: int) -> tuple[str, float, float]:
+    if posterior is None:
+        return "explore", 0.0, 0.0
+    return decide(posterior, baseline, n)
+
+
+def build_allocation_plan(
+    posteriors: dict[str, Posterior | None],
+    get_baseline,
+    rates: dict[str, RawCounts],
+    daily_insights_by_ad: dict[str, list[DailyInsight]] | None = None,
+    shrunk_roas: dict[str, float] | None = None,
+    spend_and_orders: dict[str, tuple[float, int]] | None = None,
+    baseline_cpa: float | None = None,
+    horizon_days: float = 30.0,
+    proposals: list[ProposedTest] | None = None,
+) -> AllocationPlan:
+    def _roas(id_: str) -> float:
+        return (shrunk_roas or {}).get(id_, 1.0)
+
+    def _n(id_: str) -> int:
+        rc = rates.get(id_)
+        return rc.n if rc else 0
+
+    scale_candidates: list[tuple[str, Posterior, float, float]] = []
+    kill_candidates: list[str] = []
+    explore_pool: list[dict] = []  # everything that COULD end up in explore, one pool, capped once below
+
+    fatigued_ids, underperforming_ids, warned_ids = [], [], []
+
+    for id_, posterior in posteriors.items():
+        baseline = get_baseline(id_)
+        action, p_better, p_worse = _classify(posterior, baseline, _n(id_))
+
+        if action == "scale" and daily_insights_by_ad is not None:
+            insights = daily_insights_by_ad.get(id_, [])
+            if is_fatigued(insights):
+                fatigued_ids.append(id_)
+                explore_pool.append({
+                    "id": id_, "posterior": posterior, "baseline": baseline,
+                    "p_better": p_better, "p_worse": p_worse, "reason": "fatigued",
+                })
+                continue
+            if frequency_warning(insights):
+                warned_ids.append(id_)
+
+        if action == "scale" and spend_and_orders is not None:
+            spend, orders = spend_and_orders.get(id_, (None, 0))
+            if is_underperforming(spend, orders, baseline_cpa):
+                underperforming_ids.append(id_)
+                explore_pool.append({
+                    "id": id_, "posterior": posterior, "baseline": baseline,
+                    "p_better": p_better, "p_worse": p_worse, "reason": "underperforming",
+                    "spend": spend, "orders": orders,
+                })
+                continue
+
+        if action == "scale":
+            scale_candidates.append((id_, posterior, p_better, p_worse))
+        elif action == "kill":
+            kill_candidates.append(id_)
+        else:
+            explore_pool.append({
+                "id": id_, "posterior": posterior, "baseline": baseline,
+                "p_better": p_better, "p_worse": p_worse, "reason": "hold",
+            })
+
+    plan = AllocationPlan()
+    plan.fatigued = fatigued_ids
+    plan.underperforming = underperforming_ids
+    plan.warned = warned_ids
+
+    # --- exploit: confidence x ROAS weighted split of EXPLOIT_SHARE ---
+    exploit_scores = {id_: p_better * _roas(id_) for id_, _, p_better, _ in scale_candidates}
+    total_weight = sum(exploit_scores.values())
+
+    for id_, posterior, p_better, p_worse in scale_candidates:
+        weight = exploit_scores[id_] / total_weight if total_weight else 0.0
+        plan.exploit.append(
+            ExploitAllocation(
+                id=id_, action="scale", weight=weight,
+                budget_share=weight * EXPLOIT_SHARE,
+                p_better=p_better, p_worse=p_worse,
+            )
+        )
+        plan.bucket_by_id[id_] = "exploit"
+
+    # --- kill: no budget ---
+    plan.kill = kill_candidates
+    for id_ in plan.kill:
+        plan.bucket_by_id[id_] = "kill"
+
+    # --- explore: which pool candidates actually get a slot and a budget
+    # share, plus each one's hypothesis and stop rule -- a separate question
+    # from the classification above (see explore_selection.py). ---
+    selection = select_explore_tests(
+        explore_pool, rates, daily_insights_by_ad, _roas, baseline_cpa,
+        horizon_days, proposals, MAX_EXPLORE_TESTS, EXPLORE_SHARE,
+        spend_and_orders=spend_and_orders,
+    )
+    plan.explore = selection.kept
+    plan.proposed = selection.proposed
+    plan.unresolvable = selection.unresolvable
+    plan.dropped_from_explore = selection.dropped_from_explore
+
+    for e in plan.explore:
+        plan.bucket_by_id[e.id] = "explore"
+    # lost the top-MAX_EXPLORE_TESTS ranking (or unresolvable) -> no budget,
+    # plain hold, not "explore"
+    for id_ in plan.dropped_from_explore:
+        plan.bucket_by_id[id_] = "none"
+
+    return plan
+
+
+def print_plan(plan: AllocationPlan) -> None:
+    print(f"Exploit ({EXPLOIT_SHARE:.0%} of budget)")
+    print(f"Explore ({EXPLORE_SHARE:.0%} of budget)\n")
+
+    if plan.warned:
+        print(
+            f"Frequency warning (2.5-{FATIGUE_FREQUENCY_THRESHOLD:.1f}, "
+            f"informational only, not vetoed): {', '.join(plan.warned)}\n"
+        )
+
+    print("--- Exploit ---")
+    for a in sorted(plan.exploit, key=lambda a: a.budget_share, reverse=True):
+        print(
+            f"{a.id}: {a.action}, budget_share={a.budget_share:.1%}, "
+            f"P(better)={a.p_better:.4f}, P(worse)={a.p_worse:.4f}"
+        )
+
+    if plan.kill:
+        print("\n--- Kill (no budget, stop entirely) ---")
+        for id_ in plan.kill:
+            print(id_)
+
+    print("\n--- Explore ---")
+    for e in plan.explore:
+        flag = ""
+        if e.id in plan.fatigued:
+            flag = " [fatigue-vetoed scale]"
+        elif e.id in plan.underperforming:
+            flag = " [CPA-vetoed scale]"
+        print(f"{e.name} ({e.id}){flag}: budget_share={e.budget_share:.1%}")
+        print(f"  hypothesis: {e.hypothesis}")
+        print(f"  stop_rule: {e.stop_rule}")
+
+    if plan.dropped_from_explore:
+        print(
+            f"\n--- Held, no budget (lost the top-{MAX_EXPLORE_TESTS} explore ranking) ---"
+        )
+        print(", ".join(plan.dropped_from_explore))
+
+
+# Demo removed -- it rebuilt the whole posterior chain from scratch just to
+# print one example, drifting out of sync with the real pipeline in the
+# process (see auditing/findings.py). To inspect one id end-to-end, run:
+#   python3 -m scripts.inspect --level <campaign|adset|ad> --id <id>
+
+===FILE: src/decision/new_tests.py===
+"""
+Proposes explore tests for combinations the account has never run.
+
+Why this exists: the explore pool is built from posteriors, and posteriors only
+exist for things already running. So the explore bucket could only ever re-test
+what was already live -- and on this account everything live sits within 1-3
+points of its baseline, which no amount of budget can separate. It was spending
+30% of the budget to learn nothing.
+
+The account has 5 audience types and 5 creative themes. 14 of those 25
+combinations have never been run. The best audience (demographic) has only ever
+been shown one theme. That gap is where the information actually is.
+
+Ranking is a margins estimate, NOT a prediction: how each audience does across
+all its creatives, and how each theme does across all its audiences, combined as
+if the two effects were independent. The interaction between them is exactly what
+is unknown -- which is why the output is a test to run, never a decision to fund.
+"""
+
+from collections import defaultdict
+from dataclasses import dataclass
+
+from ..ingestion.joiner import JoinedConversation
+from ..ingestion.meta_loader import MetaData
+from ..scoring.aggregator import _summarize
+from ..config import load_config
+
+MIN_MARGIN_N = load_config()["decision"]["min_n_for_action"]
+
+
+@dataclass
+class Margin:
+    key: str
+    successes: int
+    n: int
+    rate: float
+
+
+@dataclass
+class ProposedTest:
+    audience_type: str
+    theme: str
+    name: str
+    hypothesis: str
+    stop_rule: str
+    expected_rate: float
+    budget_share: float = 0.0
+    # Raw margins behind the deterministic hypothesis above, kept so the
+    # reasoning layer can rewrite it in merchant language without re-deriving
+    # anything -- see hypothesis.py:rewrite_proposed(). `hypothesis` itself
+    # stays the fallback text if that rewrite is unavailable.
+    audience_rate: float = 0.0
+    audience_n: int = 0
+    theme_rate: float = 0.0
+    theme_n: int = 0
+    baseline: float = 0.0
+
+    @property
+    def id(self) -> str:
+        return f"new:{self.audience_type}x{self.theme}"
+
+
+def _margins(groups: dict[str, list]) -> dict[str, Margin]:
+    out = {}
+    for key, convs in groups.items():
+        rc = _summarize(convs)
+        if rc.n >= MIN_MARGIN_N and rc.raw_rate is not None:
+            out[key] = Margin(key=key, successes=rc.successes, n=rc.n, rate=rc.raw_rate)
+    return out
+
+
+def propose_new_tests(
+    joined: list[JoinedConversation], meta: MetaData, baseline: float,
+    horizon_days: float, limit: int = 5,
+) -> list[ProposedTest]:
+    creatives = {c.id: c for c in meta.creatives}
+
+    by_audience, by_theme = defaultdict(list), defaultdict(list)
+    tried: set[tuple[str, str]] = set()
+
+    for j in joined:
+        creative = creatives.get(j.ad.creative_id)
+        if not creative or not creative.theme or not j.adset.audience_type:
+            continue
+        by_audience[j.adset.audience_type].append(j.conversation)
+        by_theme[creative.theme].append(j.conversation)
+        tried.add((j.adset.audience_type, creative.theme))
+
+    audience_margins = _margins(by_audience)
+    theme_margins = _margins(by_theme)
+
+    proposals = []
+    for aud in audience_margins.values():
+        for theme in theme_margins.values():
+            if (aud.key, theme.key) in tried:
+                continue
+            # Independent-effects estimate: each margin's lift over the account
+            # baseline, applied together. Deliberately naive -- if it were
+            # reliable this would be a funding decision, not a test.
+            expected = min(1.0, aud.rate * theme.rate / baseline) if baseline else 0.0
+            proposals.append(ProposedTest(
+                audience_type=aud.key, theme=theme.key,
+                name=f"{aud.key} audience x {theme.key} creative (never run)",
+                hypothesis=(
+                    f"The {aud.key} audience has never been shown a {theme.key} creative. "
+                    f"On its own that audience converts {aud.rate:.0%} across "
+                    f"{aud.n} conversations, and that theme converts {theme.rate:.0%} across "
+                    f"{theme.n}, both against an account average of {baseline:.0%}. If the two "
+                    f"carry over independently the pairing lands near {expected:.0%}, but nothing "
+                    f"here measures how they interact -- that is what the test buys."
+                ),
+                stop_rule=(
+                    f"Run it for {horizon_days:.0f} days, the length of a typical campaign here. "
+                    f"Judge it on whether it clears the {baseline:.0%} account average, not on "
+                    f"the {expected:.0%} guess above."
+                ),
+                expected_rate=expected,
+                audience_rate=aud.rate, audience_n=aud.n,
+                theme_rate=theme.rate, theme_n=theme.n,
+                baseline=baseline,
+            ))
+
+    proposals.sort(key=lambda p: p.expected_rate, reverse=True)
+    return proposals[:limit]
+
+===FILE: src/decision/outcome_decision.py===
+
+from scipy.stats import beta as beta_dist
+
+from ..scoring.corrector import Posterior
+from ..config import load_config
+
+_cfg = load_config()["decision"]
+
+# Config-driven (config.yaml: decision.probability_threshold). Temporary --
+# not yet tuned against a holdout evaluation.
+PROBABILITY_THRESHOLD = _cfg["probability_threshold"]
+
+# Config-driven (config.yaml: decision.min_n_for_action). Minimum number of
+# *real, resolved* conversations behind a score before we'll act on it at all
+# (scale/kill). Below this, one flipped outcome can swing the whole call,
+# however confident the posterior math looks -- see corrector.py: with a
+# fixed prior strength the posterior's "precision" is already high from the
+# prior alone even at n=0, so precision can't be used as the evidence gate.
+# n is the honest, data-grounded gate instead.
+MIN_N_FOR_ACTION = _cfg["min_n_for_action"]
+
+
+def _probabilities_against_baseline(posterior: Posterior, baseline: float) -> tuple[float, float]:
+    p_better = 1 - beta_dist.cdf(baseline, posterior.alpha_post, posterior.beta_post)
+    p_worse = beta_dist.cdf(baseline, posterior.alpha_post, posterior.beta_post)
+    return p_better, p_worse
+
+
+def decide(
+    posterior: Posterior,
+    baseline: float,
+    n: int,
+    probability_threshold: float = PROBABILITY_THRESHOLD,
+    min_n: int = MIN_N_FOR_ACTION,
+) -> tuple[str, float, float]:
+    p_better, p_worse = _probabilities_against_baseline(posterior, baseline)
+
+    if n < min_n:
+        return "hold", p_better, p_worse
+    if p_better >= probability_threshold:
+        return "scale", p_better, p_worse
+    if p_worse >= probability_threshold:
+        return "kill", p_better, p_worse
+    return "hold", p_better, p_worse
+
+
+def report(label, posteriors, get_baseline, get_n):
+    print(f"--- {label} ---")
+    for id_ in sorted(posteriors.keys()):
+        posterior = posteriors[id_]
+        baseline = get_baseline(id_)
+        action, p_better, p_worse = decide(posterior, baseline, get_n(id_))
+        print(
+            f"{id_}: score={posterior.score:.4f}, "
+            f"interval=[{posterior.interval_low:.4f}, {posterior.interval_high:.4f}], "
+            f"baseline={baseline:.4f}, P(better)={p_better:.4f}, P(worse)={p_worse:.4f}, -> {action}"
+        )
+
+===FILE: src/auditing/findings.py===
+"""
+Audit layer: where our decision and the money disagree.
+
+Not the same thing as the brief's "merchant-readable findings", which are
+written observations for the write-up. These are consistency checks between the
+action the pipeline took and what that id actually earned.
+
+It used to rebuild the whole pipeline here -- posteriors, baselines, plans --
+just to know what action each id got. That copy drifted the moment the corrector
+started fitting its prior from data: this file stayed on PRIOR_STRENGTH=10 while
+the pipeline moved to 17.64/16.09, so it was auditing decisions the scoreboard
+never made. It now takes the finished rows instead, so there is one source of
+truth and nothing to keep in sync.
+"""
+
+BREAKEVEN = 1.0
+# Ranking cut for "one of your better earners". Same kind of distribution-based
+# cut as the median it replaces, but asking a question worth answering: the old
+# rule fired on anything above the median, which is half the population by
+# construction, and produced findings like "roas=1.07 beats the median of 1.05".
+TOP_QUARTILE = 0.75
+
+
+def flag_findings(rows: list[dict], roas_by_id: dict[str, float]) -> list[dict]:
+    """rows are finished scoreboard rows; roas_by_id is the SAME shrunk ROAS the
+    allocation used, so a finding quotes the number the decision saw."""
+    values = sorted(r for r in (roas_by_id.get(row["id"]) for row in rows) if r is not None)
+    if not values:
+        return []
+    cut = values[min(int(len(values) * TOP_QUARTILE), len(values) - 1)]
+
+    findings = []
+    for row in rows:
+        roas, action = roas_by_id.get(row["id"]), row["action"]
+        if roas is None:
+            continue
+
+        if action == "scale" and roas < BREAKEVEN:
+            note = (f"Funded to scale, but it loses money: {roas:.2f} EGP back "
+                    f"per 1 EGP spent.")
+        elif action == "kill" and roas >= BREAKEVEN:
+            note = (f"Marked to stop, but it is still profitable: {roas:.2f} EGP "
+                    f"back per 1 EGP spent.")
+        elif action != "scale" and roas >= cut and roas > BREAKEVEN:
+            note = (f"Among the best earners here at {roas:.2f} EGP per 1 EGP spent "
+                    f"(top quarter starts at {cut:.2f}), but it is not being scaled.")
+        else:
+            continue
+
+        findings.append({
+            "id": row["id"], "name": row["name"], "action": action,
+            "bucket": row["bucket"], "roas": roas, "finding": note,
+        })
+
+    findings.sort(key=lambda f: -f["roas"])
+    return findings
+
+
+def print_findings(label: str, findings: list[dict]) -> None:
+    if not findings:
+        print(f"--- {label}: decisions and money agree ---")
+        return
+    print(f"--- {label}: {len(findings)} where the decision and the money disagree ---")
+    for f in findings:
+        print(f"  {f['name'][:44]:<46} {f['finding']}")
+
+===FILE: src/auditing/audit.py===
+"""
+Compares real revenue (src.scoring.revenue, derived from WhatsApp outcomes)
+against real spend (meta_data.json) to produce ROAS per level.
+
+Validation/audit layer only - does NOT feed back into the score or the
+scale/hold/kill decision.
+"""
+
+from collections import defaultdict
+
+from ..ingestion.conversation_loader import load_conversations
+from ..ingestion.meta_loader import load_meta
+from ..ingestion.joiner import join_conversations_to_meta
+from ..scoring.revenue import revenue_totals
+from ..scoring.corrector import PRIOR_STRENGTH
+
+
+def spend_totals(meta) -> tuple[dict, dict, dict]:
+    ad_spend, adset_spend, campaign_spend = defaultdict(float), defaultdict(float), defaultdict(float)
+
+    for insight in meta.insights:
+        if insight.spend:
+            ad_spend[insight.ad_id] += insight.spend
+            adset_spend[insight.adset_id] += insight.spend
+            campaign_spend[insight.campaign_id] += insight.spend
+
+    return ad_spend, adset_spend, campaign_spend
+
+
+def build_roas_rows(revenue_by_id: dict, spend_by_id: dict) -> list[dict]:
+    rows = []
+    for id_, rev in revenue_by_id.items():
+        spend = spend_by_id.get(id_)
+        roas = rev.total_revenue / spend if spend else None
+        rows.append({
+            "id": id_,
+            "total_revenue": rev.total_revenue,
+            "avg_revenue": rev.avg_revenue,
+            "n": rev.n,
+            "spend": spend,
+            "roas": roas,
+        })
+    rows.sort(key=lambda r: -(r["roas"] or 0))
+    return rows
+
+
+def shrunk_roas_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: float = PRIOR_STRENGTH) -> dict[str, float]:
+    # Bayesian average (same shrinkage idea as corrector.py's PRIOR_STRENGTH):
+    # regularizes small-sample ROAS toward the portfolio-wide mean so a
+    # handful of orders can't swing the signal to an extreme value.
+    raw = {}
+    for id_, rev in revenue_by_id.items():
+        spend = spend_by_id.get(id_)
+        raw[id_] = rev.total_revenue / spend if spend else None
+
+    known = [v for v in raw.values() if v is not None]
+    prior_mean = sum(known) / len(known) if known else 0.0
+
+    return {
+        id_: (
+            prior_mean if raw[id_] is None
+            else (prior_strength * prior_mean + rev.n * raw[id_]) / (prior_strength + rev.n)
+        )
+        for id_, rev in revenue_by_id.items()
+    }
+
+
+def baseline_cpa(revenue_by_id: dict, spend_by_id: dict) -> float | None:
+    total_spend = sum(spend_by_id.get(id_, 0.0) for id_ in revenue_by_id)
+    total_orders = sum(rev.n for rev in revenue_by_id.values())
+    return total_spend / total_orders if total_orders else None
+
+
+def print_roas(label, rows):
+    print(f"--- {label} ---")
+    for r in rows:
+        avg = f"{r['avg_revenue']:.2f}" if r["avg_revenue"] is not None else "n/a"
+        spend = f"{r['spend']:.2f}" if r["spend"] is not None else "n/a"
+        roas = f"{r['roas']:.2f}" if r["roas"] is not None else "n/a"
+        print(
+            f"{r['id']:<24} revenue={r['total_revenue']:>10.2f}  avg={avg:<8} n={r['n']:<4} "
+            f"spend={spend:<10} roas={roas}"
+        )
+
+
+if __name__ == "__main__":
+    convs = load_conversations("data/train/conv_train.json")
+    meta = load_meta("data/train/meta_train.json")
+    joined = join_conversations_to_meta(convs, meta).scoreable
+
+    ad_revenue, adset_revenue, campaign_revenue = revenue_totals(joined)
+    ad_spend, adset_spend, campaign_spend = spend_totals(meta)
+
+    print_roas("Campaigns", build_roas_rows(campaign_revenue, campaign_spend))
+    print()
+    print_roas("Adsets", build_roas_rows(adset_revenue, adset_spend))
+    print()
+    print_roas("Ads", build_roas_rows(ad_revenue, ad_spend))
+===FILE: src/reporting.py===
+"""
+Everything that turns finished scoreboard rows into output: the CSV (the
+brief's deliverable, one row per id), the plan JSON (the app's companion
+file -- money and proposed tests, which have no id to sit on), and the
+console printout. Split out of pipeline.py, which used to carry these
+alongside the orchestration itself; pipeline.py now only builds rows and
+calls these to write/print them.
+"""
+
+import csv
+import json
+from datetime import datetime
+
+from .auditing.findings import flag_findings
+from .decision.outcome_decision import PROBABILITY_THRESHOLD
+
+CSV_FIELDS = [
+    "level", "id", "name", "raw_rate", "score", "interval_low", "interval_high",
+    "action", "bucket", "budget_share", "why", "reasoning", "detail", "hypothesis", "stop_rule",
+]
+
+
+def write_plan(path, level_data, horizon_days, priors):
+    """Companion to the CSV. Carries the money a merchant decides with -- spend,
+    revenue, return, orders -- and each row's parent, none of which the CSV
+    schema (one row per id, per the brief) has a column for."""
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "horizon_days": horizon_days,
+        "probability_threshold": PROBABILITY_THRESHOLD,
+        "fitted_prior_strength": priors,
+        "levels": {},
+    }
+    for level, rows, plan, money, parents in level_data:
+        spend, revenue, roas = money
+        findings = flag_findings(rows, roas)
+        total_spend = sum(spend.get(r["id"], 0.0) or 0.0 for r in rows)
+        total_revenue = sum(
+            revenue[r["id"]].total_revenue for r in rows if r["id"] in revenue
+        )
+        payload["levels"][level] = {
+            "totals": {
+                "spend": total_spend,
+                "revenue": total_revenue,
+                "roas": (total_revenue / total_spend) if total_spend else None,
+                "orders": sum(revenue[r["id"]].n for r in rows if r["id"] in revenue),
+            },
+            "rows": [
+                {
+                    "id": r["id"], "name": r["name"], "detail": r["detail"],
+                    "raw_rate": r["raw_rate"], "score": r["score"],
+                    "interval_low": r["interval"][0] if r["interval"] else None,
+                    "interval_high": r["interval"][1] if r["interval"] else None,
+                    "action": r["action"], "bucket": r["bucket"],
+                    "budget_share": r["budget_share"], "why": r["why"],
+                    "reasoning": r["reasoning"], "hypothesis": r["hypothesis"],
+                    "stop_rule": r["stop_rule"],
+                    "successes": r["successes"], "n": r["n"], "excluded": r["excluded"],
+                    "parent": parents.get(r["id"]),
+                    # Why the funding does not simply follow the decision. Without
+                    # these a merchant sees "scale" sitting in the test bucket with
+                    # nothing on the page explaining who overruled it.
+                    "held_back_by": (
+                        "audience fatigue" if r["id"] in plan.fatigued
+                        else "cost per order" if r["id"] in plan.underperforming
+                        else None
+                    ),
+                    "frequency_warning": r["id"] in plan.warned,
+                    "not_worth_testing": r["id"] in plan.unresolvable,
+                    "lost_test_slot": (
+                        r["id"] in plan.dropped_from_explore
+                        and r["id"] not in plan.unresolvable
+                    ),
+                    "spend": spend.get(r["id"]),
+                    "revenue": revenue[r["id"]].total_revenue if r["id"] in revenue else None,
+                    "orders": revenue[r["id"]].n if r["id"] in revenue else None,
+                    "roas": roas.get(r["id"]),
+                    "cost_per_order": (
+                        spend[r["id"]] / revenue[r["id"]].n
+                        if spend.get(r["id"]) and revenue.get(r["id"]) and revenue[r["id"]].n
+                        else None
+                    ),
+                }
+                for r in rows
+            ],
+            "proposed": [
+                {
+                    "name": t.name, "audience_type": t.audience_type, "theme": t.theme,
+                    "hypothesis": t.hypothesis, "stop_rule": t.stop_rule,
+                    "budget_share": t.budget_share, "expected_rate": t.expected_rate,
+                }
+                for t in plan.proposed
+            ],
+            "unresolvable": plan.unresolvable,
+            "findings": findings,
+        }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+def print_scoreboard(label, rows):
+    print(f"--- {label} ---")
+    for r in rows:
+        score = f"{r['score']:.3f}" if r["score"] is not None else "n/a"
+        interval = f"[{r['interval'][0]:.3f}, {r['interval'][1]:.3f}]" if r["interval"] else "n/a"
+        budget = f"{r['budget_share']:.1%}" if r["budget_share"] else "-"
+        print(
+            f"{r['id']:<24} {r['name']:<28} {r['detail']:<32}\n"
+            f"    raw={r['raw_rate']:.3f}  score={score:<6} interval={interval:<18} "
+            f"action={r['action']:<5} bucket={r['bucket']:<8} budget={budget:<6} why={'; '.join(r['why'])}"
+        )
+        print(f"    -> {r['reasoning']}")
+
+    explore_rows = [r for r in rows if r["bucket"] == "explore"]
+    if explore_rows:
+        print(f"\n{label} explore tests:")
+        for r in explore_rows:
+            print(f"  {r['name']} ({r['id']}):")
+            print(f"    hypothesis: {r['hypothesis']}")
+            print(f"    stop_rule: {r['stop_rule']}")
+
+
+def write_csv(path, level_rows):
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        for level, rows in level_rows:
+            for r in rows:
+                writer.writerow({
+                    "level": level,
+                    "id": r["id"],
+                    "name": r["name"],
+                    "raw_rate": r["raw_rate"],
+                    "score": r["score"],
+                    "interval_low": r["interval"][0] if r["interval"] else "",
+                    "interval_high": r["interval"][1] if r["interval"] else "",
+                    "action": r["action"],
+                    "bucket": r["bucket"],
+                    "budget_share": r["budget_share"],
+                    "why": "; ".join(r["why"]),
+                    "reasoning": r["reasoning"],
+                    "detail": r["detail"],
+                    "hypothesis": r["hypothesis"] or "",
+                    "stop_rule": r["stop_rule"] or "",
+                })
+

@@ -3,6 +3,12 @@ from dataclasses import dataclass
 from src.ingestion.conversation_loader import Conversation, load_conversations
 from src.ingestion.meta_loader import Ad, Adset, Campaign, MetaData, load_meta
 
+from ..config import load_config
+
+# Config, not a literal: these platforms carry no ad ids so they can never be
+# scored, and the same list decides what the train/holdout split keeps.
+ORGANIC_OR_DIRECT = set(load_config()["split"]["organic_direct_platforms"])
+
 
 @dataclass
 class JoinedConversation:
@@ -27,7 +33,7 @@ def join_conversations_to_meta(conversations: list[Conversation], meta: MetaData
     scoreable, organic_or_direct, unmatched_ctwa = [], [], []
 
     for conv in conversations:
-        if conv.source.platform in ("organic", "direct"):
+        if conv.source.platform in ORGANIC_OR_DIRECT:
             organic_or_direct.append(conv)
             continue
 
@@ -44,11 +50,26 @@ def join_conversations_to_meta(conversations: list[Conversation], meta: MetaData
     return JoinResult(scoreable=scoreable, organic_or_direct=organic_or_direct, unmatched_ctwa=unmatched_ctwa)
 
 
+def group_by_level(joined: list[JoinedConversation]) -> tuple[dict, dict, dict]:
+    """Conversations grouped three ways from one pass over joined: by ad id,
+    by adset id, by campaign id. Shared by scoring/aggregator.py (success/failure
+    counts) and scoring/revenue.py (money) -- they used to each re-walk joined
+    with an identical loop; this is the one place that walk happens now."""
+    from collections import defaultdict
+
+    by_ad, by_adset, by_campaign = defaultdict(list), defaultdict(list), defaultdict(list)
+    for jc in joined:
+        by_ad[jc.ad.id].append(jc.conversation)
+        by_adset[jc.adset.id].append(jc.conversation)
+        by_campaign[jc.campaign.id].append(jc.conversation)
+    return by_ad, by_adset, by_campaign
+
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--conversations", default="data/train/train.json")
+    parser.add_argument("--conversations", default="data/train/conv_train.json")
     parser.add_argument("--meta", default="data/train/meta_train.json")
     args = parser.parse_args()
 
