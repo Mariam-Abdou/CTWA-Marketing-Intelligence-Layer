@@ -14,8 +14,7 @@ _alloc_cfg = load_config()["allocation"]
 
 # Config-driven (config.yaml: allocation.*). The brief's own 70/30 rule says
 # this split should move with confidence and season -- these are still fixed
-# constants for now, just centralized; see NEW_FINDINGS for the follow-up to
-# make them adaptive.
+# constants for now, just centralized; making them adaptive is a follow-up.
 EXPLOIT_SHARE = _alloc_cfg["exploit_share"]
 EXPLORE_SHARE = _alloc_cfg["explore_share"]
 
