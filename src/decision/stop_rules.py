@@ -32,6 +32,28 @@ def daily_spend_rate(insights: list[DailyInsight]) -> float:
     return total_spend / active_days if active_days else 0.0
 
 
+def resolution_check(
+    spend: float | None, baseline_cpa: float | None, per_day: float, horizon_days: float,
+) -> dict:
+    """resolves_in_time() with its working, for the decision trace."""
+    d = {"spend": spend, "baseline_cpa": baseline_cpa, "daily_spend_rate": per_day,
+         "horizon_days": horizon_days, "min_spend_multiplier": MIN_SPEND_MULTIPLIER}
+    if baseline_cpa is None:
+        return {**d, "resolvable": True, "reason": "no baseline CPA, nothing to check"}
+    judge_line = baseline_cpa * MIN_SPEND_MULTIPLIER
+    needed = max(0.0, judge_line - (spend or 0.0))
+    d.update({"judge_line": judge_line, "spend_still_needed": needed})
+    if needed <= 0:
+        return {**d, "resolvable": True, "reason": "already past the judging line"}
+    if not per_day:
+        return {**d, "resolvable": False, "reason": "no recent delivery pace, cannot reach the judging line"}
+    days = needed / per_day
+    ok = days <= horizon_days
+    return {**d, "days_to_judge": days, "resolvable": ok,
+            "reason": "reaches the judging line within one campaign length" if ok
+                      else "would take longer than one campaign length to judge"}
+
+
 def resolves_in_time(
     spend: float | None, baseline_cpa: float | None, per_day: float, horizon_days: float,
 ) -> bool:

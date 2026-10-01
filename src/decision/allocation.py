@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
-from .outcome_decision import decide
-from .guardrails import FATIGUE_FREQUENCY_THRESHOLD, frequency_warning, is_fatigued, is_underperforming
+from .outcome_decision import decide_with_rule
+from .guardrails import FATIGUE_FREQUENCY_THRESHOLD, cpa_check, fatigue_check
 from .explore_selection import ExploreExperiment, select_explore_tests
 from ..ingestion.meta_loader import DailyInsight
 from ..scoring.aggregator import RawCounts
@@ -40,12 +40,15 @@ class AllocationPlan:
     underperforming: list[str] = field(default_factory=list)
     warned: list[str] = field(default_factory=list)
     dropped_from_explore: list[str] = field(default_factory=list)
+    # id -> every input and intermediate value behind that id's bucket and
+    # budget share. Written as the plan is built, never recomputed after.
+    trace: dict[str, dict] = field(default_factory=dict)
 
 
-def _classify(posterior: Posterior | None, baseline: float, n: int) -> tuple[str, float, float]:
+def _classify(posterior: Posterior | None, baseline: float, n: int) -> tuple[str, float, float, str]:
     if posterior is None:
-        return "explore", 0.0, 0.0
-    return decide(posterior, baseline, n)
+        return "explore", 0.0, 0.0, "no resolved conversations yet: no posterior, goes to the test pool"
+    return decide_with_rule(posterior, baseline, n)
 
 
 def build_allocation_plan(
@@ -71,26 +74,43 @@ def build_allocation_plan(
     explore_pool: list[dict] = []  # everything that COULD end up in explore, one pool, capped once below
 
     fatigued_ids, underperforming_ids, warned_ids = [], [], []
+    plan_trace: dict[str, dict] = {}
 
     for id_, posterior in posteriors.items():
         baseline = get_baseline(id_)
-        action, p_better, p_worse = _classify(posterior, baseline, _n(id_))
+        action, p_better, p_worse, rule = _classify(posterior, baseline, _n(id_))
+        t = plan_trace[id_] = {
+            "baseline": baseline, "n": _n(id_), "p_better": p_better, "p_worse": p_worse,
+            "raw_action": action, "rule": rule,
+            "fatigue": None, "fatigue_applied": False,
+            "cpa": None, "cpa_applied": False,
+        }
+        # Computed for every id so the trace can show the numbers; they only
+        # change the outcome when the raw action is "scale" (applied=True).
+        if daily_insights_by_ad is not None:
+            t["fatigue"] = fatigue_check(daily_insights_by_ad.get(id_, []))
+        if spend_and_orders is not None:
+            _spend, _orders = spend_and_orders.get(id_, (None, 0))
+            t["cpa"] = cpa_check(_spend, _orders, baseline_cpa)
 
         if action == "scale" and daily_insights_by_ad is not None:
-            insights = daily_insights_by_ad.get(id_, [])
-            if is_fatigued(insights):
+            t["fatigue_applied"] = True
+            if t["fatigue"]["fatigued"]:
+                t["route"] = "test pool: scale vetoed by fatigue"
                 fatigued_ids.append(id_)
                 explore_pool.append({
                     "id": id_, "posterior": posterior, "baseline": baseline,
                     "p_better": p_better, "p_worse": p_worse, "reason": "fatigued",
                 })
                 continue
-            if frequency_warning(insights):
+            if t["fatigue"]["frequency_warning"]:
                 warned_ids.append(id_)
 
         if action == "scale" and spend_and_orders is not None:
             spend, orders = spend_and_orders.get(id_, (None, 0))
-            if is_underperforming(spend, orders, baseline_cpa):
+            t["cpa_applied"] = True
+            if t["cpa"]["underperforming"]:
+                t["route"] = "test pool: scale vetoed by cost per order"
                 underperforming_ids.append(id_)
                 explore_pool.append({
                     "id": id_, "posterior": posterior, "baseline": baseline,
@@ -100,16 +120,20 @@ def build_allocation_plan(
                 continue
 
         if action == "scale":
+            t["route"] = "exploit candidate"
             scale_candidates.append((id_, posterior, p_better, p_worse))
         elif action == "kill":
+            t["route"] = "kill: no budget"
             kill_candidates.append(id_)
         else:
+            t["route"] = "test pool: undecided"
             explore_pool.append({
                 "id": id_, "posterior": posterior, "baseline": baseline,
                 "p_better": p_better, "p_worse": p_worse, "reason": "hold",
             })
 
     plan = AllocationPlan()
+    plan.trace = plan_trace
     plan.fatigued = fatigued_ids
     plan.underperforming = underperforming_ids
     plan.warned = warned_ids
@@ -128,6 +152,12 @@ def build_allocation_plan(
             )
         )
         plan.bucket_by_id[id_] = "exploit"
+        plan_trace[id_]["exploit_weight"] = {
+            "p_better": p_better, "shrunk_roas": _roas(id_),
+            "raw_weight": exploit_scores[id_], "total_raw_weight": total_weight,
+            "weight": weight, "exploit_share": EXPLOIT_SHARE,
+            "budget_share": weight * EXPLOIT_SHARE,
+        }
 
     # kill: no budget
     plan.kill = kill_candidates
@@ -150,6 +180,17 @@ def build_allocation_plan(
 
     for id_ in plan.dropped_from_explore:
         plan.bucket_by_id[id_] = "none"
+
+    for id_, d in selection.details.items():
+        plan_trace[id_]["explore_selection"] = d
+        if id_ in plan.unresolvable:
+            d["outcome"] = "not worth testing: cannot be judged within one campaign length"
+        elif id_ in plan.dropped_from_explore:
+            d["outcome"] = f"lost the test slot: ranked below the top {MAX_EXPLORE_TESTS}"
+        else:
+            d["outcome"] = "funded as a test"
+    for id_ in plan_trace:
+        plan_trace[id_]["bucket"] = plan.bucket_by_id.get(id_, "none")
 
     return plan
 

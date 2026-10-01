@@ -30,47 +30,92 @@ def _recent_avg_frequency(
     return _avg(freqs)
 
 
+def fatigue_check(daily_insights: list[DailyInsight]) -> dict:
+    """The fatigue veto and the frequency warning, with every number they read.
+    is_fatigued() and frequency_warning() return fields of this dict, so the
+    trace stored for an id is exactly the working the veto acted on."""
+    days = len(daily_insights)
+    avg_frequency = _recent_avg_frequency(daily_insights) if daily_insights else None
+
+    first_avg = last_avg = ctr_drop = None
+    if days >= FATIGUE_MIN_DAYS_FOR_CTR_CHECK:
+        first = [i.ctr for i in daily_insights[:FATIGUE_WINDOW_DAYS] if i.ctr is not None]
+        last = [i.ctr for i in daily_insights[-FATIGUE_WINDOW_DAYS:] if i.ctr is not None]
+        if first and last:
+            first_avg, last_avg = _avg(first), _avg(last)
+            if first_avg > 0:
+                ctr_drop = (first_avg - last_avg) / first_avg
+
+    if days < FATIGUE_MIN_DAYS_FOR_CTR_CHECK:
+        fatigued, reason = False, f"only {days} days of delivery; needs {FATIGUE_MIN_DAYS_FOR_CTR_CHECK} to compare first vs last week"
+    elif avg_frequency is None or avg_frequency < FATIGUE_FREQUENCY_THRESHOLD:
+        fatigued, reason = False, "recent frequency below the fatigue threshold"
+    elif first_avg is None or last_avg is None:
+        fatigued, reason = False, "no CTR data in the first or last window"
+    elif first_avg <= 0:
+        fatigued, reason = False, "first-week CTR is zero, no drop to measure"
+    else:
+        fatigued = ctr_drop >= FATIGUE_CTR_DROP_THRESHOLD
+        reason = ("frequency at/above threshold AND CTR dropped at least the threshold vs first week"
+                  if fatigued else "frequency at/above threshold but CTR drop below threshold")
+
+    if days < FATIGUE_WINDOW_DAYS or avg_frequency is None:
+        warning = False
+    else:
+        warning = FATIGUE_WARNING_FREQUENCY_THRESHOLD <= avg_frequency < FATIGUE_FREQUENCY_THRESHOLD
+
+    return {
+        "days": days,
+        "window_days": FATIGUE_WINDOW_DAYS,
+        "min_days_for_ctr_check": FATIGUE_MIN_DAYS_FOR_CTR_CHECK,
+        "recent_avg_frequency": avg_frequency,
+        "frequency_threshold": FATIGUE_FREQUENCY_THRESHOLD,
+        "warning_frequency_threshold": FATIGUE_WARNING_FREQUENCY_THRESHOLD,
+        "first_window_avg_ctr": first_avg,
+        "last_window_avg_ctr": last_avg,
+        "ctr_drop": ctr_drop,
+        "ctr_drop_threshold": FATIGUE_CTR_DROP_THRESHOLD,
+        "fatigued": fatigued,
+        "frequency_warning": warning,
+        "reason": reason,
+    }
+
+
 def is_fatigued(daily_insights: list[DailyInsight]) -> bool:
-    if len(daily_insights) < FATIGUE_MIN_DAYS_FOR_CTR_CHECK:
-        return False
-
-    avg_frequency = _recent_avg_frequency(daily_insights)
-    if avg_frequency is None or avg_frequency < FATIGUE_FREQUENCY_THRESHOLD:
-        return False
-
-    first_window_ctrs = [i.ctr for i in daily_insights[:FATIGUE_WINDOW_DAYS] if i.ctr is not None]
-    last_window_ctrs = [i.ctr for i in daily_insights[-FATIGUE_WINDOW_DAYS:] if i.ctr is not None]
-    if not first_window_ctrs or not last_window_ctrs:
-        return False
-
-    first_avg = _avg(first_window_ctrs)
-    last_avg = _avg(last_window_ctrs)
-    if first_avg <= 0:
-        return False
-
-    ctr_drop = (first_avg - last_avg) / first_avg
-    return ctr_drop >= FATIGUE_CTR_DROP_THRESHOLD
+    return fatigue_check(daily_insights)["fatigued"]
 
 
 def frequency_warning(daily_insights: list[DailyInsight]) -> bool:
-    if len(daily_insights) < FATIGUE_WINDOW_DAYS:
-        return False
+    return fatigue_check(daily_insights)["frequency_warning"]
 
-    avg_frequency = _recent_avg_frequency(daily_insights)
-    if avg_frequency is None:
-        return False
 
-    return FATIGUE_WARNING_FREQUENCY_THRESHOLD <= avg_frequency < FATIGUE_FREQUENCY_THRESHOLD
+def cpa_check(spend: float | None, orders: int, baseline_cpa: float | None) -> dict:
+    """The CPA veto with every number it read. is_underperforming() returns
+    its "underperforming" field."""
+    judge_line = baseline_cpa * MIN_SPEND_MULTIPLIER if baseline_cpa is not None else None
+    stop_line = baseline_cpa * CPA_STOP_MULTIPLIER if baseline_cpa is not None else None
+    cpa = spend / orders if spend is not None and orders else None
+
+    if spend is None or baseline_cpa is None:
+        under, reason = False, "no spend or no baseline CPA to compare against"
+    elif spend < judge_line:
+        under, reason = False, "spend has not reached the judging line yet"
+    elif orders == 0:
+        under, reason = True, "spent past the judging line with zero orders"
+    else:
+        under = cpa > stop_line
+        reason = "CPA above the stop line" if under else "CPA under the stop line"
+
+    return {
+        "spend": spend, "orders": orders, "cpa": cpa, "baseline_cpa": baseline_cpa,
+        "min_spend_multiplier": MIN_SPEND_MULTIPLIER, "judge_line": judge_line,
+        "stop_multiplier": CPA_STOP_MULTIPLIER, "stop_line": stop_line,
+        "underperforming": under, "reason": reason,
+    }
 
 
 def is_underperforming(spend: float | None, orders: int, baseline_cpa: float | None) -> bool:
-    if spend is None or baseline_cpa is None:
-        return False
-    if spend < baseline_cpa * MIN_SPEND_MULTIPLIER:
-        return False
-    if orders == 0:
-        return True
-    return (spend / orders) > baseline_cpa * CPA_STOP_MULTIPLIER
+    return cpa_check(spend, orders, baseline_cpa)["underperforming"]
 
 
 if __name__ == "__main__":

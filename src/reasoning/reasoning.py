@@ -97,7 +97,10 @@ def _template(f: DecisionFacts) -> str:
     return head + "."
 
 
-def narrate_all(facts_list: list[DecisionFacts]) -> dict[str, str]:
+def narrate_all(facts_list: list[DecisionFacts], provenance: dict | None = None) -> dict[str, str]:
+    """provenance, if given, is filled id -> {source, prompt}: where each
+    sentence came from (llm | cache | template:<why>) and the exact facts the
+    model was shown."""
     llm, cache = client(), load_cache()
     out: dict[str, str] = {}
     counts: dict[str, int] = {}
@@ -116,6 +119,8 @@ def narrate_all(facts_list: list[DecisionFacts]) -> dict[str, str]:
             )
         out[f.id] = text
         counts[source] = counts.get(source, 0) + 1
+        if provenance is not None:
+            provenance[f.id] = {"source": source, "prompt": _facts_text(f)}
 
     save_cache(cache)
     report("Reasoning", counts)

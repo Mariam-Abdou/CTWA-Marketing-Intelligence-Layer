@@ -44,6 +44,24 @@ def build_roas_rows(revenue_by_id: dict, spend_by_id: dict) -> list[dict]:
     return rows
 
 
+def roas_details_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: float = PRIOR_STRENGTH) -> dict[str, dict]:
+    """shrunk_roas_by_id() with its working per id: raw ROAS, the portfolio
+    mean it is pulled toward, the pull strength, and the result."""
+    raw = {}
+    for id_, rev in revenue_by_id.items():
+        spend = spend_by_id.get(id_)
+        raw[id_] = rev.total_revenue / spend if spend else None
+    known = [v for v in raw.values() if v is not None]
+    prior_mean = sum(known) / len(known) if known else 0.0
+    shrunk = shrunk_roas_by_id(revenue_by_id, spend_by_id, prior_strength)
+    return {
+        id_: {"revenue": rev.total_revenue, "orders": rev.n, "spend": spend_by_id.get(id_),
+              "raw_roas": raw[id_], "portfolio_mean_roas": prior_mean,
+              "shrinkage_strength": prior_strength, "shrunk_roas": shrunk[id_]}
+        for id_, rev in revenue_by_id.items()
+    }
+
+
 def shrunk_roas_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: float = PRIOR_STRENGTH) -> dict[str, float]:
     # Bayesian average (same shrinkage idea as corrector.py's PRIOR_STRENGTH):
     # regularizes small-sample ROAS toward the portfolio-wide mean so a

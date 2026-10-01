@@ -14,12 +14,12 @@ from src.ingestion.meta_loader import (
 )
 from src.ingestion.joiner import join_conversations_to_meta
 from src.scoring.aggregator import raw_rates
-from src.scoring.corrector import compute_posterior, compute_top_level_posterior, estimate_prior_strength
+from src.scoring.corrector import compute_posterior, compute_top_level_posterior, estimate_prior_strength_details
 from src.scoring.revenue import revenue_totals
 from statistics import median
 
-from src.auditing.audit import spend_totals, shrunk_roas_by_id, baseline_cpa as compute_baseline_cpa
-from src.decision.outcome_decision import PROBABILITY_THRESHOLD, decide
+from src.auditing.audit import spend_totals, shrunk_roas_by_id, roas_details_by_id, baseline_cpa as compute_baseline_cpa
+from src.decision.outcome_decision import PROBABILITY_THRESHOLD, MIN_N_FOR_ACTION, decide_with_rule
 from src.decision.action import resolve_action
 from src.auditing.findings import flag_findings, print_findings
 from src.decision.guardrails import describe_signals
@@ -29,6 +29,7 @@ from src.reasoning.llm import DecisionFacts
 from src.reasoning.reasoning import narrate_all
 from src.reasoning.hypothesis import build_hypotheses, rewrite_proposed
 from src.reporting import write_csv, write_plan, print_scoreboard
+from src.trace import record_trace
 
 _RUN = f"{datetime.now():%Y%m%d_%H%M%S}"
 OUTPUT_FILE = f"outputs/scoreboard_{_RUN}.csv"
@@ -98,12 +99,13 @@ def build_scoreboard(rates, posteriors, get_baseline, plan, labels, insights_by_
         label = labels.get(id_, {"name": id_, "detail": ""})
 
         baseline = get_baseline(id_)
+        raw_action, p_better, p_worse, rule = None, None, None, "no resolved conversations"
         if posterior is None:
             action = "hold"
             interval = None
             score = None
         else:
-            raw_action, p_better, p_worse = decide(posterior, baseline, rc.n)
+            raw_action, p_better, p_worse, rule = decide_with_rule(posterior, baseline, rc.n)
             action = resolve_action(
                 raw_action,
                 is_fatigued=id_ in plan.fatigued,
@@ -121,6 +123,14 @@ def build_scoreboard(rates, posteriors, get_baseline, plan, labels, insights_by_
             "budget_share": budget_share_by_id.get(id_, 0.0),
             "hypothesis": e.hypothesis if e else None,
             "stop_rule": e.stop_rule if e else None,
+            # Kept for the decision trace (src/trace.py) -- not part of the CSV.
+            "raw_action": raw_action, "p_better": p_better, "p_worse": p_worse,
+            "decision_rule": rule,
+            "is_fatigued": id_ in plan.fatigued,
+            "is_underperforming": id_ in plan.underperforming,
+            "held_back_by": ("audience fatigue" if id_ in plan.fatigued
+                             else "cost per order" if id_ in plan.underperforming else None),
+            "hypothesis_rule_based": e.hypothesis if e else None,
         })
 
     rows.sort(key=lambda r: (_SORT_ORDER.get((r["bucket"], r["action"]), 4), -(r["score"] or 0)))
@@ -154,24 +164,35 @@ def attach_reasoning(rows, level, plan, roas):
     explore rows. Both run AFTER the decisions are final -- delete these two
     calls and the scoreboard is unchanged. See src/reasoning/llm.py."""
     roas_baseline = _median_roas(roas)
-    texts = narrate_all([_facts_for(r, level, plan, roas, roas_baseline=roas_baseline) for r in rows])
+    provenance = {}
+    texts = narrate_all([_facts_for(r, level, plan, roas, roas_baseline=roas_baseline) for r in rows],
+                        provenance=provenance)
     for r in rows:
         r["reasoning"] = texts[r["id"]]
+        r["reasoning_source"] = provenance.get(r["id"], {}).get("source")
+        r["reasoning_prompt"] = provenance.get(r["id"], {}).get("prompt")
 
     confidence_by_id = {e.id: max(e.p_better, e.p_worse) for e in plan.explore}
     explore_rows = [r for r in rows if r["bucket"] == "explore"]
+    hyp_provenance = {}
     hypotheses = build_hypotheses([
         _facts_for(r, level, plan, roas, confidence_by_id.get(r["id"]), roas_baseline)
         for r in explore_rows
-    ])
+    ], provenance=hyp_provenance)
     for r in explore_rows:
         r["hypothesis"] = hypotheses[r["id"]]
+        r["hypothesis_source"] = hyp_provenance.get(r["id"], {}).get("source")
+        r["hypothesis_prompt"] = hyp_provenance.get(r["id"], {}).get("prompt")
     return rows
 
 if __name__ == "__main__":
-    convs = load_conversations("data/train/conv_train.json")
-    meta = load_meta("data/train/meta_train.json")
-    joined = join_conversations_to_meta(convs, meta).scoreable
+    CONV_PATH = "data/train/conv_train.json"
+    META_PATH = "data/train/meta_train.json"
+    PRODUCTS_PATH = "data/train/products.json"
+    convs = load_conversations(CONV_PATH)
+    meta = load_meta(META_PATH)
+    join_result = join_conversations_to_meta(convs, meta)
+    joined = join_result.scoreable
 
     ad_rates, adset_rates, campaign_rates = raw_rates(joined)
     adset_to_campaign = {j.adset.id: j.campaign.id for j in joined}
@@ -182,8 +203,10 @@ if __name__ == "__main__":
     # ads) beyond what sampling noise alone explains sets how hard each level
     # gets pulled toward its parent. Re-run with more cycles of data and these
     # move on their own; nothing here needs to change by hand.
-    adset_prior_strength = estimate_prior_strength(adset_rates)
-    ad_prior_strength = estimate_prior_strength(ad_rates)
+    adset_prior_details = estimate_prior_strength_details(adset_rates)
+    ad_prior_details = estimate_prior_strength_details(ad_rates)
+    adset_prior_strength = adset_prior_details["prior_strength"]
+    ad_prior_strength = ad_prior_details["prior_strength"]
     print(f"Fitted prior strength: adset={adset_prior_strength:.2f}, ad={ad_prior_strength:.2f}\n")
 
     campaign_posteriors = {
@@ -283,9 +306,13 @@ if __name__ == "__main__":
     # Proposed (never-run) tests have no scoreboard row and no id in `rows`,
     # so attach_reasoning() above never touches them -- rewrite in place here.
     if adset_plan.proposed:
-        proposed_hyps = rewrite_proposed(adset_plan.proposed, overall_baseline)
+        proposed_provenance = {}
+        for t in adset_plan.proposed:
+            t.hypothesis_rule_based = t.hypothesis
+        proposed_hyps = rewrite_proposed(adset_plan.proposed, overall_baseline, provenance=proposed_provenance)
         for t in adset_plan.proposed:
             t.hypothesis = proposed_hyps[t.id]
+            t.hypothesis_source = proposed_provenance.get(t.id, {}).get("source")
 
     print(f"\nProbability threshold: {PROBABILITY_THRESHOLD:.2f}\n")
     print_scoreboard("Campaigns", campaign_rows)
@@ -327,4 +354,30 @@ if __name__ == "__main__":
         horizon_days,
         {"adset": adset_prior_strength, "ad": ad_prior_strength},
     )
-    print(f"\nWrote {OUTPUT_FILE} and {PLAN_FILE}")
+    trace_path = record_trace(
+        run_id=_RUN,
+        paths={"conversations": CONV_PATH, "meta": META_PATH, "products": PRODUCTS_PATH,
+               "scoreboard_csv": OUTPUT_FILE, "plan_json": PLAN_FILE},
+        convs=convs, meta=meta, join_result=join_result,
+        overall_baseline=overall_baseline, horizon_days=horizon_days,
+        prior_details={"adset": adset_prior_details, "ad": ad_prior_details},
+        levels={
+            "campaign": dict(rows=campaign_rows, plan=campaign_plan, rates=campaign_rates,
+                             posteriors=campaign_posteriors,
+                             roas_details=roas_details_by_id(campaign_revenue, campaign_spend),
+                             baseline_cpa=campaign_baseline_cpa, median_roas=_median_roas(campaign_roas),
+                             series=insights_by_campaign(meta), roas=campaign_roas),
+            "adset": dict(rows=adset_rows, plan=adset_plan, rates=adset_rates,
+                          posteriors=adset_posteriors,
+                          roas_details=roas_details_by_id(adset_revenue, adset_spend),
+                          baseline_cpa=adset_baseline_cpa, median_roas=_median_roas(adset_roas),
+                          series=insights_by_adset(meta), roas=adset_roas),
+            "ad": dict(rows=ad_rows, plan=ad_plan, rates=ad_rates, posteriors=ad_posteriors,
+                       roas_details=roas_details_by_id(ad_revenue, ad_spend),
+                       baseline_cpa=ad_baseline_cpa, median_roas=_median_roas(ad_roas),
+                       series=insights_by_ad(meta), roas=ad_roas),
+        },
+        adset_to_campaign=adset_to_campaign, ad_to_adset=ad_to_adset,
+        campaign_posteriors=campaign_posteriors, adset_posteriors=adset_posteriors,
+    )
+    print(f"\nWrote {OUTPUT_FILE}, {PLAN_FILE} and {trace_path}")
