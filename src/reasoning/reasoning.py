@@ -71,7 +71,7 @@ def _facts_text(f: DecisionFacts) -> str:
     if f.is_fatigued:
         lines.append("Why it did not get more money: the same people keep seeing it and have stopped clicking")
     if f.is_underperforming:
-        lines.append("Why it did not get more money: each order is costing far more than this shop usually pays")
+        lines.append("Why it did not get more money: each sale is costing far more than this shop usually pays")
     return "\n".join(lines)
 
 
@@ -91,7 +91,7 @@ def _template(f: DecisionFacts) -> str:
     if f.is_fatigued:
         head += ", and it is held back from more because the same people keep seeing it"
     elif f.is_underperforming:
-        head += ", and each order is costing far more than this shop usually pays"
+        head += ", and each sale is costing far more than this shop usually pays"
     elif f.is_thin:
         head += ", on too few conversations to be sure"
     return head + "."

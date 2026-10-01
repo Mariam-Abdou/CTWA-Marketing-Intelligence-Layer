@@ -22,7 +22,7 @@ CSV_FIELDS = [
 
 def write_plan(path, level_data, horizon_days, priors):
     """Companion to the CSV. Carries the money a merchant decides with -- spend,
-    revenue, return, orders -- and each row's parent, none of which the CSV
+    revenue, return, sales -- and each row's parent, none of which the CSV
     schema (one row per id, per the brief) has a column for."""
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -43,7 +43,8 @@ def write_plan(path, level_data, horizon_days, priors):
                 "spend": total_spend,
                 "revenue": total_revenue,
                 "roas": (total_revenue / total_spend) if total_spend else None,
-                "orders": sum(revenue[r["id"]].n for r in rows if r["id"] in revenue),
+                "sales": sum(revenue[r["id"]].sales for r in rows if r["id"] in revenue),
+                "resolved_conversations": sum(revenue[r["id"]].n for r in rows if r["id"] in revenue),
             },
             "rows": [
                 {
@@ -62,7 +63,7 @@ def write_plan(path, level_data, horizon_days, priors):
                     # nothing on the page explaining who overruled it.
                     "held_back_by": (
                         "audience fatigue" if r["id"] in plan.fatigued
-                        else "cost per order" if r["id"] in plan.underperforming
+                        else "cost per sale" if r["id"] in plan.underperforming
                         else None
                     ),
                     "frequency_warning": r["id"] in plan.warned,
@@ -73,11 +74,12 @@ def write_plan(path, level_data, horizon_days, priors):
                     ),
                     "spend": spend.get(r["id"]),
                     "revenue": revenue[r["id"]].total_revenue if r["id"] in revenue else None,
-                    "orders": revenue[r["id"]].n if r["id"] in revenue else None,
+                    "sales": revenue[r["id"]].sales if r["id"] in revenue else None,
+                    "resolved_conversations": revenue[r["id"]].n if r["id"] in revenue else None,
                     "roas": roas.get(r["id"]),
-                    "cost_per_order": (
-                        spend[r["id"]] / revenue[r["id"]].n
-                        if spend.get(r["id"]) and revenue.get(r["id"]) and revenue[r["id"]].n
+                    "cost_per_sale": (
+                        spend[r["id"]] / revenue[r["id"]].sales
+                        if spend.get(r["id"]) and revenue.get(r["id"]) and revenue[r["id"]].sales
                         else None
                     ),
                 }

@@ -82,12 +82,12 @@ def _hypothesis_for(c: dict, baseline_cpa: float | None) -> str:
         )
 
     if c["reason"] == "underperforming":
-        spend, orders = c["spend"], c["orders"]
-        cpa = f"{spend / orders:.2f}" if orders else "undefined (0 orders)"
+        spend, sales = c["spend"], c["sales"]
+        cpa = f"{spend / sales:.2f}" if sales else "undefined (0 sales)"
         return (
             f"{id_} would qualify for scale (P(better)={p_better:.0%} vs baseline "
             f"{baseline:.3f}), but is held back by the CPA stop-rule guardrail: "
-            f"CPA={cpa} vs baseline CPA {baseline_cpa:.2f} "
+            f"cost per sale={cpa} vs baseline {baseline_cpa:.2f} "
             f"(stop threshold {CPA_STOP_MULTIPLIER}x after spend >= "
             f"{MIN_SPEND_MULTIPLIER}x baseline CPA)."
         )
@@ -105,16 +105,16 @@ def select_explore_tests(
     proposals: list[ProposedTest] | None,
     max_tests: int,
     explore_share: float,
-    spend_and_orders: dict | None = None,
+    spend_and_sales: dict | None = None,
 ) -> ExploreSelection:
     """rates/daily_insights_by_ad/roas mirror what build_allocation_plan already
     has: rates is {id: RawCounts}, daily_insights_by_ad is {id: [DailyInsight]}
     or None, roas is a callable id -> float (allocation.py's `_roas` closure).
-    spend_and_orders is {id: (spend, orders)}, the same dict the CPA guardrail
+    spend_and_sales is {id: (spend, sales)}, the same dict the CPA guardrail
     in allocation.py uses -- the stop rule here is judged on the same numbers."""
 
-    def _spend_orders(id_: str) -> tuple[float | None, int]:
-        return (spend_and_orders or {}).get(id_, (None, 0))
+    def _spend_sales(id_: str) -> tuple[float | None, int]:
+        return (spend_and_sales or {}).get(id_, (None, 0))
 
     selection = ExploreSelection()
 
@@ -123,7 +123,7 @@ def select_explore_tests(
     # a test that never gets there is not a test, it is just spend.
     resolvable = []
     for c in explore_pool:
-        spend, _ = _spend_orders(c["id"])
+        spend, _ = _spend_sales(c["id"])
         per_day = daily_spend_rate((daily_insights_by_ad or {}).get(c["id"], []))
         check = resolution_check(spend, baseline_cpa, per_day, horizon_days)
         selection.details[c["id"]] = {"pool_reason": c["reason"], "resolution": check}
@@ -157,7 +157,7 @@ def select_explore_tests(
     # 4. Write the hypothesis + stop rule for each surviving candidate.
     for c in kept:
         id_ = c["id"]
-        spend, orders = _spend_orders(id_)
+        spend, sales = _spend_sales(id_)
         selection.details[id_]["budget"] = {
             "explore_share": explore_share, "tests_funded": total_tests,
             "live_tests": len(kept), "proposed_tests": len(selection.proposed),
@@ -167,7 +167,7 @@ def select_explore_tests(
             ExploreExperiment(
                 id=id_, name=f"test_{id_}", hypothesis=_hypothesis_for(c, baseline_cpa),
                 stop_rule=build_stop_rule(
-                    spend, orders, baseline_cpa,
+                    spend, sales, baseline_cpa,
                     (daily_insights_by_ad or {}).get(id_, []),
                 ),
                 budget_share=per_experiment_share, p_better=c["p_better"], p_worse=c["p_worse"],

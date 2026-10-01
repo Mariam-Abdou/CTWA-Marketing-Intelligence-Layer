@@ -4,7 +4,9 @@ from ..ingestion.conversation_loader import Conversation
 from ..ingestion.io_utils import load_json
 from .amounts import get_outcome_amounts
 
-PRODUCTS_PATH = "data/train/products.json"
+from ..config import load_config
+
+PRODUCTS_PATH = load_config()["data"]["products"]
 
 
 def _min_product_price(path: str = PRODUCTS_PATH) -> float:

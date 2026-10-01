@@ -18,7 +18,7 @@ from src.scoring.corrector import compute_posterior, compute_top_level_posterior
 from src.scoring.revenue import revenue_totals
 from statistics import median
 
-from src.auditing.audit import spend_totals, shrunk_roas_by_id, roas_details_by_id, baseline_cpa as compute_baseline_cpa
+from src.auditing.audit import spend_totals, shrunk_roas_by_id, roas_details_by_id, baseline_cpa_details, baseline_cpa as compute_baseline_cpa
 from src.decision.outcome_decision import PROBABILITY_THRESHOLD, MIN_N_FOR_ACTION, decide_with_rule
 from src.decision.action import resolve_action
 from src.auditing.findings import flag_findings, print_findings
@@ -129,7 +129,7 @@ def build_scoreboard(rates, posteriors, get_baseline, plan, labels, insights_by_
             "is_fatigued": id_ in plan.fatigued,
             "is_underperforming": id_ in plan.underperforming,
             "held_back_by": ("audience fatigue" if id_ in plan.fatigued
-                             else "cost per order" if id_ in plan.underperforming else None),
+                             else "cost per sale" if id_ in plan.underperforming else None),
             "hypothesis_rule_based": e.hypothesis if e else None,
         })
 
@@ -186,9 +186,9 @@ def attach_reasoning(rows, level, plan, roas):
     return rows
 
 if __name__ == "__main__":
-    CONV_PATH = "data/train/conv_train.json"
-    META_PATH = "data/train/meta_train.json"
-    PRODUCTS_PATH = "data/train/products.json"
+    from src.config import load_config
+    _data = load_config()["data"]
+    CONV_PATH, META_PATH, PRODUCTS_PATH = _data["conversations"], _data["meta"], _data["products"]
     convs = load_conversations(CONV_PATH)
     meta = load_meta(META_PATH)
     join_result = join_conversations_to_meta(convs, meta)
@@ -247,9 +247,9 @@ if __name__ == "__main__":
     adset_roas = shrunk_roas_by_id(adset_revenue, adset_spend)
     ad_roas = shrunk_roas_by_id(ad_revenue, ad_spend)
 
-    campaign_cpa_inputs = {id_: (campaign_spend.get(id_), rev.n) for id_, rev in campaign_revenue.items()}
-    adset_cpa_inputs = {id_: (adset_spend.get(id_), rev.n) for id_, rev in adset_revenue.items()}
-    ad_cpa_inputs = {id_: (ad_spend.get(id_), rev.n) for id_, rev in ad_revenue.items()}
+    campaign_cpa_inputs = {id_: (campaign_spend.get(id_), rev.sales) for id_, rev in campaign_revenue.items()}
+    adset_cpa_inputs = {id_: (adset_spend.get(id_), rev.sales) for id_, rev in adset_revenue.items()}
+    ad_cpa_inputs = {id_: (ad_spend.get(id_), rev.sales) for id_, rev in ad_revenue.items()}
 
     campaign_baseline_cpa = compute_baseline_cpa(campaign_revenue, campaign_spend)
     adset_baseline_cpa = compute_baseline_cpa(adset_revenue, adset_spend)
@@ -268,21 +268,21 @@ if __name__ == "__main__":
         campaign_posteriors, campaign_baseline, rates=campaign_rates,
         daily_insights_by_ad=insights_by_campaign(meta),
         shrunk_roas=campaign_roas,
-        spend_and_orders=campaign_cpa_inputs, baseline_cpa=campaign_baseline_cpa,
+        spend_and_sales=campaign_cpa_inputs, baseline_cpa=campaign_baseline_cpa,
         horizon_days=horizon_days,
     )
     adset_plan = build_allocation_plan(
         adset_posteriors, adset_baseline, rates=adset_rates,
         daily_insights_by_ad=insights_by_adset(meta),
         shrunk_roas=adset_roas,
-        spend_and_orders=adset_cpa_inputs, baseline_cpa=adset_baseline_cpa,
+        spend_and_sales=adset_cpa_inputs, baseline_cpa=adset_baseline_cpa,
         horizon_days=horizon_days, proposals=new_test_candidates,
     )
     ad_plan = build_allocation_plan(
         ad_posteriors, ad_baseline, rates=ad_rates,
         daily_insights_by_ad=insights_by_ad(meta),
         shrunk_roas=ad_roas,
-        spend_and_orders=ad_cpa_inputs, baseline_cpa=ad_baseline_cpa,
+        spend_and_sales=ad_cpa_inputs, baseline_cpa=ad_baseline_cpa,
         horizon_days=horizon_days,
     )
 
@@ -359,22 +359,28 @@ if __name__ == "__main__":
         paths={"conversations": CONV_PATH, "meta": META_PATH, "products": PRODUCTS_PATH,
                "scoreboard_csv": OUTPUT_FILE, "plan_json": PLAN_FILE},
         convs=convs, meta=meta, join_result=join_result,
-        overall_baseline=overall_baseline, horizon_days=horizon_days,
+        overall_baseline=overall_baseline,
+        overall_baseline_inputs={"successes": total_successes, "resolved_n": total_n,
+                                 "rule": "account-wide successes / resolved conversations"},
+        horizon_days=horizon_days,
         prior_details={"adset": adset_prior_details, "ad": ad_prior_details},
         levels={
             "campaign": dict(rows=campaign_rows, plan=campaign_plan, rates=campaign_rates,
                              posteriors=campaign_posteriors,
                              roas_details=roas_details_by_id(campaign_revenue, campaign_spend),
                              baseline_cpa=campaign_baseline_cpa, median_roas=_median_roas(campaign_roas),
+                       baseline_cpa_inputs=baseline_cpa_details(campaign_revenue, campaign_spend),
                              series=insights_by_campaign(meta), roas=campaign_roas),
             "adset": dict(rows=adset_rows, plan=adset_plan, rates=adset_rates,
                           posteriors=adset_posteriors,
                           roas_details=roas_details_by_id(adset_revenue, adset_spend),
                           baseline_cpa=adset_baseline_cpa, median_roas=_median_roas(adset_roas),
+                       baseline_cpa_inputs=baseline_cpa_details(adset_revenue, adset_spend),
                           series=insights_by_adset(meta), roas=adset_roas),
             "ad": dict(rows=ad_rows, plan=ad_plan, rates=ad_rates, posteriors=ad_posteriors,
                        roas_details=roas_details_by_id(ad_revenue, ad_spend),
                        baseline_cpa=ad_baseline_cpa, median_roas=_median_roas(ad_roas),
+                       baseline_cpa_inputs=baseline_cpa_details(ad_revenue, ad_spend),
                        series=insights_by_ad(meta), roas=ad_roas),
         },
         adset_to_campaign=adset_to_campaign, ad_to_adset=ad_to_adset,

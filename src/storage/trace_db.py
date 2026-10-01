@@ -88,14 +88,42 @@ CREATE TABLE IF NOT EXISTS decision_steps (
     PRIMARY KEY (run_id, entity_id, step_no)
 );
 CREATE TABLE IF NOT EXISTS decisions (
-    run_id TEXT, level TEXT, entity_id TEXT, name TEXT,
+    -- One flat row per scored id: the final decision AND the key numbers
+    -- behind it. Every value is copied from decision_steps (never
+    -- recomputed), so this table and the steps cannot disagree.
+    run_id TEXT, level TEXT, entity_id TEXT, name TEXT, detail TEXT,
+    parent_id TEXT, campaign_id TEXT, adset_id TEXT,
+    -- step 1: evidence
+    conversations INTEGER, successes INTEGER, failures INTEGER, excluded INTEGER, raw_rate REAL,
+    -- steps 2-4: score and statistical decision
+    baseline REAL, baseline_source TEXT, prior_strength REAL,
     score REAL, interval_low REAL, interval_high REAL,
-    raw_action TEXT, action TEXT, bucket TEXT, budget_share REAL,
-    held_back_by TEXT, why_json TEXT,
-    reasoning TEXT, reasoning_source TEXT,
+    p_better REAL, p_worse REAL, decision_rule TEXT, raw_action TEXT,
+    -- step 5: money
+    spend REAL, revenue REAL, sales INTEGER, resolved_conversations INTEGER,
+    roas_raw REAL, roas_shrunk REAL, cost_per_sale REAL,
+    baseline_cost_per_sale REAL, level_median_roas REAL,
+    -- steps 6-8: guardrails and final action
+    recent_frequency REAL, ctr_drop REAL,
+    fatigue_checked INTEGER, fatigued INTEGER, frequency_warning INTEGER,
+    cpa_checked INTEGER, underperforming INTEGER,
+    action TEXT, held_back_by TEXT,
+    -- step 9: allocation
+    bucket TEXT, budget_share REAL, explore_outcome TEXT, explore_rank INTEGER,
+    -- steps 10-12: text
+    why_json TEXT, reasoning TEXT, reasoning_source TEXT,
     hypothesis TEXT, hypothesis_source TEXT, stop_rule TEXT,
-    findings_json TEXT,
+    finding_count INTEGER, findings_json TEXT,
     PRIMARY KEY (run_id, entity_id)
+);
+CREATE TABLE IF NOT EXISTS level_totals (
+    -- Sums over the decisions table, per level. Totals across a level count
+    -- each conversation once (campaign level = the whole account).
+    run_id TEXT, level TEXT, entities INTEGER,
+    spend REAL, revenue REAL, roas REAL, sales INTEGER, resolved_conversations INTEGER,
+    cost_per_sale REAL, scale_count INTEGER, hold_count INTEGER, kill_count INTEGER,
+    exploit_share REAL, explore_share REAL,
+    PRIMARY KEY (run_id, level)
 );
 CREATE TABLE IF NOT EXISTS proposed_tests (
     run_id TEXT, level TEXT, test_id TEXT, name TEXT, audience_type TEXT, theme TEXT,
@@ -117,8 +145,12 @@ CREATE VIEW IF NOT EXISTS current_steps AS
     SELECT s.* FROM decision_steps s JOIN runs r USING (run_id) WHERE r.is_current = 1;
 """
 
+# Bump when a table's columns change: an older database is rebuilt from
+# scratch on the next run instead of failing on a missing column.
+SCHEMA_VERSION = 2
+
 PER_RUN_TABLES = [
-    "entities", "conversations", "entity_conversations", "meta_objects", "entity_meta",
+    "level_totals", "entities", "conversations", "entity_conversations", "meta_objects", "entity_meta",
     "daily_insights", "entity_daily_series", "products", "decision_steps", "decisions",
     "proposed_tests", "entity_bundles", "runs",
 ]
@@ -250,14 +282,14 @@ def build_steps(*, level, entity_id, row, rate, posterior, prior_info, plan_trac
 
     # 5. money
     steps.append(_step(
-        5, "money", "Money: spend, revenue, ROAS, cost per order",
+        5, "money", "Money: spend, revenue, ROAS, cost per sale",
         rule=("Context and guardrail input, never part of the score. ROAS is shrunk toward the "
-              "portfolio mean so a few orders cannot swing it."),
+              "portfolio mean so a few conversations cannot swing it."),
         inputs={"spend": (roas_detail or {}).get("spend"), "revenue": (roas_detail or {}).get("revenue"),
-                "orders": (roas_detail or {}).get("orders")},
+                "sales": (roas_detail or {}).get("sales")},
         outputs={**(roas_detail or {}),
-                 "cost_per_order": (t.get("cpa") or {}).get("cpa"),
-                 "baseline_cpa": money_context["baseline_cpa"],
+                 "cost_per_sale": (t.get("cpa") or {}).get("cost_per_sale"),
+                 "baseline_cost_per_sale": money_context["baseline_cpa"],
                  "level_median_roas": money_context["median_roas"]},
     ))
 
@@ -282,16 +314,16 @@ def build_steps(*, level, entity_id, row, rate, posterior, prior_info, plan_trac
     cpa = t.get("cpa") or {}
     fatigue_vetoed = bool(t.get("fatigue_applied") and fat.get("fatigued"))
     steps.append(_step(
-        7, "cpa_guardrail", "Cost-per-order guardrail",
+        7, "cpa_guardrail", "Cost-per-sale guardrail",
         applied=t.get("cpa_applied", False),
         changed=bool(t.get("cpa_applied") and cpa.get("underperforming")),
         rule=("Only checked when the raw action is scale and fatigue did not already veto it. "
-              "Once spend passes the judging line, vetoes scale if there are zero orders or "
-              "CPA is above the stop line."
+              "Once spend passes the judging line, vetoes scale if there are zero sales or "
+              "the cost per sale is above the stop line (stop_multiplier x the level's baseline cost per sale)."
               + (" Skipped: fatigue already vetoed." if fatigue_vetoed else "")),
-        inputs={k: cpa.get(k) for k in ("spend", "orders", "baseline_cpa", "min_spend_multiplier",
+        inputs={k: cpa.get(k) for k in ("spend", "sales", "baseline_cost_per_sale", "min_spend_multiplier",
                                         "judge_line", "stop_multiplier", "stop_line")},
-        outputs={"cpa": cpa.get("cpa"), "underperforming": cpa.get("underperforming"),
+        outputs={"cost_per_sale": cpa.get("cost_per_sale"), "underperforming": cpa.get("underperforming"),
                  "reason": cpa.get("reason")},
     ))
 
@@ -371,7 +403,7 @@ def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
     """
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     with closing(_connect(db_path)) as db, db:
-        db.executescript(SCHEMA)
+        _ensure_schema(db)
         db.execute("UPDATE runs SET is_current = 0")
         db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?,?)", (
             run_id, generated_at, 1, paths["conversations"], paths["meta"], paths["products"],
@@ -446,13 +478,9 @@ def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
                     "stop_rule": row.get("stop_rule"),
                     "findings": lv["findings"].get(eid, []),
                 }
-                db.execute("INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
-                    run_id, level, eid, e["name"], decision["score"], decision["interval_low"],
-                    decision["interval_high"], decision["raw_action"], decision["action"],
-                    decision["bucket"], decision["budget_share"], decision["held_back_by"],
-                    _j(decision["why"]), decision["reasoning"], decision["reasoning_source"],
-                    decision["hypothesis"], decision["hypothesis_source"], decision["stop_rule"],
-                    _j(decision["findings"])))
+                flat = {"run_id": run_id, **_flat(e, steps, decision)}
+                db.execute(f"INSERT INTO decisions ({','.join(flat)}) VALUES ({','.join('?' * len(flat))})",
+                           list(flat.values()))
 
             # bundle: everything about this id in one document
             convs = []
@@ -492,6 +520,7 @@ def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
                 p["budget_share"], p["expected_rate"], p["hypothesis"], p.get("hypothesis_source"),
                 p["stop_rule"], _j(p)))
 
+        _write_level_totals(db, run_id, run_params)
         _prune(db, keep_runs)
     with closing(_connect(db_path)) as db:
         db.execute("VACUUM")
@@ -538,6 +567,77 @@ def _meta_relations(level, eid, raw_meta):
             seen.add(item)
             uniq.append(item)
     return uniq
+
+
+def _ensure_schema(db):
+    if db.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        for kind, name in db.execute(
+                "SELECT type, name FROM sqlite_master WHERE type IN ('table','view') "
+                "AND name NOT LIKE 'sqlite_%'").fetchall():
+            db.execute(f"DROP {kind.upper()} IF EXISTS {name}")
+        db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    db.executescript(SCHEMA)
+
+
+def _flat(e, steps, decision):
+    """decisions-table row for one id, read straight out of its steps."""
+    s = {st["step_key"]: st for st in steps}
+    o = lambda k: s[k]["outputs"] if k in s else {}
+    i = lambda k: s[k]["inputs"] if k in s else {}
+    sel = (i("allocation").get("explore_selection") or {})
+    return {
+        "level": e["level"], "entity_id": e["id"], "name": e["name"], "detail": e["detail"],
+        "parent_id": e["parent_id"], "campaign_id": e["campaign_id"], "adset_id": e["adset_id"],
+        "conversations": i("conversations").get("conversations_linked"),
+        "successes": o("conversations").get("successes"), "failures": o("conversations").get("failures"),
+        "excluded": o("conversations").get("excluded"), "raw_rate": o("conversations").get("raw_rate"),
+        "baseline": i("decision").get("baseline"), "baseline_source": i("decision").get("baseline_source"),
+        "prior_strength": o("prior").get("prior_strength"),
+        "score": decision["score"], "interval_low": decision["interval_low"],
+        "interval_high": decision["interval_high"],
+        "p_better": o("decision").get("p_better"), "p_worse": o("decision").get("p_worse"),
+        "decision_rule": s["decision"]["rule"] if "decision" in s else None,
+        "raw_action": decision["raw_action"],
+        "spend": o("money").get("spend"), "revenue": o("money").get("revenue"),
+        "sales": o("money").get("sales"),
+        "resolved_conversations": o("money").get("resolved_conversations"),
+        "roas_raw": o("money").get("raw_roas"), "roas_shrunk": o("money").get("shrunk_roas"),
+        "cost_per_sale": o("money").get("cost_per_sale"),
+        "baseline_cost_per_sale": o("money").get("baseline_cost_per_sale"),
+        "level_median_roas": o("money").get("level_median_roas"),
+        "recent_frequency": i("fatigue_guardrail").get("recent_avg_frequency"),
+        "ctr_drop": o("fatigue_guardrail").get("ctr_drop"),
+        "fatigue_checked": int(bool(s.get("fatigue_guardrail", {}).get("applied"))),
+        "fatigued": _b(o("fatigue_guardrail").get("fatigued")),
+        "frequency_warning": _b(o("fatigue_guardrail").get("frequency_warning")),
+        "cpa_checked": int(bool(s.get("cpa_guardrail", {}).get("applied"))),
+        "underperforming": _b(o("cpa_guardrail").get("underperforming")),
+        "action": decision["action"], "held_back_by": decision["held_back_by"],
+        "bucket": decision["bucket"], "budget_share": decision["budget_share"],
+        "explore_outcome": o("allocation").get("explore_outcome"),
+        "explore_rank": (sel.get("priority") or {}).get("rank"),
+        "why_json": _j(decision["why"]), "reasoning": decision["reasoning"],
+        "reasoning_source": decision["reasoning_source"],
+        "hypothesis": decision["hypothesis"], "hypothesis_source": decision["hypothesis_source"],
+        "stop_rule": decision["stop_rule"],
+        "finding_count": len(decision["findings"]), "findings_json": _j(decision["findings"]),
+    }
+
+
+def _b(v):
+    return None if v is None else int(bool(v))
+
+
+def _write_level_totals(db, run_id, run_params):
+    db.execute("""
+        INSERT INTO level_totals
+        SELECT run_id, level, COUNT(*), SUM(spend), SUM(revenue),
+               CASE WHEN SUM(spend) > 0 THEN SUM(revenue) / SUM(spend) END,
+               SUM(sales), SUM(resolved_conversations),
+               CASE WHEN SUM(sales) > 0 THEN SUM(spend) / SUM(sales) END,
+               SUM(action = 'scale'), SUM(action = 'hold'), SUM(action = 'kill'), ?, ?
+        FROM decisions WHERE run_id = ? GROUP BY level""",
+        (run_params["exploit_share"], run_params["explore_share"], run_id))
 
 
 def _prune(db, keep_runs):

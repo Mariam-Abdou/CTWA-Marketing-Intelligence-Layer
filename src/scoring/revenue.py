@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from .amounts import get_outcome_amounts
+from .classifier import classify
 from ..ingestion.joiner import group_by_level
 
 
@@ -8,7 +9,8 @@ from ..ingestion.joiner import group_by_level
 class RevenueSummary:
     total_revenue: float
     avg_revenue: float | None
-    n: int
+    n: int          # resolved conversations (outcome known) -- evidence count
+    sales: int = 0  # conversations that ended in a real sale (classifier success)
 
 
 def conversation_revenue(conversation) -> float | None:
@@ -20,7 +22,8 @@ def summarize_revenue(conversations) -> RevenueSummary:
     total_revenue = sum(amounts)
     n = len(amounts)
     avg_revenue = total_revenue / n if n else None
-    return RevenueSummary(total_revenue=total_revenue, avg_revenue=avg_revenue, n=n)
+    sales = sum(1 for c in conversations if classify(c).success)
+    return RevenueSummary(total_revenue=total_revenue, avg_revenue=avg_revenue, n=n, sales=sales)
 
 
 def revenue_totals(joined) -> tuple[dict, dict, dict]:

@@ -79,7 +79,7 @@ def _facts_text(f: DecisionFacts) -> str:
     if f.is_fatigued:
         lines.append("It is being tested rather than scaled because the same people keep seeing it and have stopped clicking")
     if f.is_underperforming:
-        lines.append("It is being tested rather than scaled because each order costs far more than this shop usually pays")
+        lines.append("It is being tested rather than scaled because each sale costs far more than this shop usually pays")
     if f.stop_rule:
         lines.append(f"When the test stops: {f.stop_rule}")
     return "\n".join(lines)
@@ -91,7 +91,7 @@ def _template(f: DecisionFacts) -> str:
     if f.is_fatigued:
         why_here = "it is showing audience fatigue, so it gets a test budget instead of a scale budget"
     elif f.is_underperforming:
-        why_here = "its cost per order is far above the account norm, so it gets a test budget instead of a scale budget"
+        why_here = "its cost per sale is far above the account norm, so it gets a test budget instead of a scale budget"
     else:
         why_here = "there is not yet enough evidence to call it either way"
     return (
