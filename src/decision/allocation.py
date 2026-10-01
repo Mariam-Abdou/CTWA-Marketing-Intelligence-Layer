@@ -12,15 +12,9 @@ from ..config import load_config
 
 _alloc_cfg = load_config()["allocation"]
 
-# Config-driven (config.yaml: allocation.*). The brief's own 70/30 rule says
-# this split should move with confidence and season -- these are still fixed
-# constants for now, just centralized; making them adaptive is a follow-up.
 EXPLOIT_SHARE = _alloc_cfg["exploit_share"]
 EXPLORE_SHARE = _alloc_cfg["explore_share"]
 
-# ~2-3 explore tests, hard cap. Fatigued/underperforming scale-candidates and
-# ordinary "hold" candidates all compete for the SAME cap -- see
-# select_explore_tests() in explore_selection.py.
 MAX_EXPLORE_TESTS = _alloc_cfg["max_explore_tests"]
 
 
@@ -120,7 +114,7 @@ def build_allocation_plan(
     plan.underperforming = underperforming_ids
     plan.warned = warned_ids
 
-    # --- exploit: confidence x ROAS weighted split of EXPLOIT_SHARE ---
+    # exploit: confidence x ROAS weighted split of EXPLOIT_SHARE 
     exploit_scores = {id_: p_better * _roas(id_) for id_, _, p_better, _ in scale_candidates}
     total_weight = sum(exploit_scores.values())
 
@@ -135,14 +129,12 @@ def build_allocation_plan(
         )
         plan.bucket_by_id[id_] = "exploit"
 
-    # --- kill: no budget ---
+    # kill: no budget
     plan.kill = kill_candidates
     for id_ in plan.kill:
         plan.bucket_by_id[id_] = "kill"
 
-    # --- explore: which pool candidates actually get a slot and a budget
-    # share, plus each one's hypothesis and stop rule -- a separate question
-    # from the classification above (see explore_selection.py). ---
+    # explore: which pool candidates actually get a slot and a budget share, with hypothesis and stop rule
     selection = select_explore_tests(
         explore_pool, rates, daily_insights_by_ad, _roas, baseline_cpa,
         horizon_days, proposals, MAX_EXPLORE_TESTS, EXPLORE_SHARE,
@@ -155,8 +147,7 @@ def build_allocation_plan(
 
     for e in plan.explore:
         plan.bucket_by_id[e.id] = "explore"
-    # lost the top-MAX_EXPLORE_TESTS ranking (or unresolvable) -> no budget,
-    # plain hold, not "explore"
+
     for id_ in plan.dropped_from_explore:
         plan.bucket_by_id[id_] = "none"
 
@@ -201,9 +192,3 @@ def print_plan(plan: AllocationPlan) -> None:
             f"\n--- Held, no budget (lost the top-{MAX_EXPLORE_TESTS} explore ranking) ---"
         )
         print(", ".join(plan.dropped_from_explore))
-
-
-# Demo removed -- it rebuilt the whole posterior chain from scratch just to
-# print one example, drifting out of sync with the real pipeline in the
-# process (see auditing/findings.py). To inspect one id end-to-end, run:
-#   python3 -m scripts.inspect --level <campaign|adset|ad> --id <id>

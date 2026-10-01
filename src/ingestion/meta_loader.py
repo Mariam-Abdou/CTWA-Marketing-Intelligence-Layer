@@ -131,7 +131,6 @@ def load_meta(path: str | Path) -> MetaData:
 
 
 def insights_by_ad(meta: MetaData) -> dict[str, list[DailyInsight]]:
-    """Groups daily insights by ad_id, each list sorted chronologically."""
     grouped: dict[str, list[DailyInsight]] = {}
     for insight in meta.insights:
         grouped.setdefault(insight.ad_id, []).append(insight)
@@ -232,15 +231,6 @@ if __name__ == "__main__":
     print("Optimization goals:", Counter(a.optimization_goal for a in meta.adsets))
 
 def typical_campaign_days(meta: "MetaData") -> float:
-    """Median run length of a real campaign in this account, in days.
-
-    Used as the horizon a test has to resolve inside. A test that outlives the
-    campaign carrying it is answering a question about a season that has already
-    ended -- these campaigns are seasonal (Ramadan, Eid, Summer), so the context
-    it was measured in no longer exists.
-
-    always_on campaigns are excluded: they run the entire timeline by design and
-    would drag the median to something no seasonal campaign ever reaches."""
     from datetime import date
 
     lengths = []
