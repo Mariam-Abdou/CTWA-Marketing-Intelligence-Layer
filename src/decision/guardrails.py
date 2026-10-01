@@ -6,20 +6,14 @@ _cfg = load_config()
 _fatigue_cfg = _cfg["fatigue"]
 _cpa_cfg = _cfg["cpa"]
 
-# Config-driven (config.yaml: fatigue.*). Grounded thresholds (see reasoning
-# log): frequency >= threshold = fatigue zone (cold/prospecting audiences),
-# warning_frequency_threshold-threshold = warning only, no veto. CTR drop
-# compares an ad's own first vs most recent FATIGUE_WINDOW_DAYS.
 FATIGUE_FREQUENCY_THRESHOLD = _fatigue_cfg["frequency_threshold"]
 FATIGUE_WARNING_FREQUENCY_THRESHOLD = _fatigue_cfg["warning_frequency_threshold"]
 FATIGUE_CTR_DROP_THRESHOLD = _fatigue_cfg["ctr_drop_threshold"]
 FATIGUE_WINDOW_DAYS = _fatigue_cfg["window_days"]
 FATIGUE_MIN_DAYS_FOR_CTR_CHECK = FATIGUE_WINDOW_DAYS * 2
 
-# Config-driven (config.yaml: cpa.*). Grounded in documented Meta pause
-# practice (ROASPIG/Adamigo): don't judge CPA until spend >= min_spend_multiplier
-# x the baseline CPA, then flag if CPA > stop_multiplier x baseline (or spend
-# happened with zero orders at all).
+# don't judge CPA until spend >= min_spend_multiplier x baseline CPA, 
+# flag if CPA > stop_multiplier x baseline
 MIN_SPEND_MULTIPLIER = _cpa_cfg["min_spend_multiplier"]
 CPA_STOP_MULTIPLIER = _cpa_cfg["stop_multiplier"]
 
@@ -97,16 +91,6 @@ if __name__ == "__main__":
 
 @dataclass
 class MetaSignals:
-    """What Meta saw, for the record only.
-
-    These never enter a score or a decision -- the boundary this project holds
-    is that the probability comes from WhatsApp outcomes alone. They are quoted
-    in the evidence trail because the brief's own example row does exactly that
-    ("CTR stable over 14 days" sits beside "3 sales / 18 clicks"), and because a
-    guardrail that vetoed a scale should be able to show its working.
-
-    Computed over the SAME windows is_fatigued() uses, so the numbers a merchant
-    reads are the numbers the veto acted on."""
     days: int
     avg_frequency: float | None
     ctr_change: float | None  # negative = CTR fell against the ad's own first week

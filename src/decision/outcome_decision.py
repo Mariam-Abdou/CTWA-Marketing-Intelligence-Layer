@@ -6,17 +6,9 @@ from ..config import load_config
 
 _cfg = load_config()["decision"]
 
-# Config-driven (config.yaml: decision.probability_threshold). Temporary --
-# not yet tuned against a holdout evaluation.
+# not yet tuned against the data.
 PROBABILITY_THRESHOLD = _cfg["probability_threshold"]
 
-# Config-driven (config.yaml: decision.min_n_for_action). Minimum number of
-# *real, resolved* conversations behind a score before we'll act on it at all
-# (scale/kill). Below this, one flipped outcome can swing the whole call,
-# however confident the posterior math looks -- see corrector.py: with a
-# fixed prior strength the posterior's "precision" is already high from the
-# prior alone even at n=0, so precision can't be used as the evidence gate.
-# n is the honest, data-grounded gate instead.
 MIN_N_FOR_ACTION = _cfg["min_n_for_action"]
 
 
@@ -26,13 +18,9 @@ def _probabilities_against_baseline(posterior: Posterior, baseline: float) -> tu
     return p_better, p_worse
 
 
-def decide(
-    posterior: Posterior,
-    baseline: float,
-    n: int,
-    probability_threshold: float = PROBABILITY_THRESHOLD,
-    min_n: int = MIN_N_FOR_ACTION,
-) -> tuple[str, float, float]:
+def decide(posterior: Posterior, baseline: float, n: int, probability_threshold: float = PROBABILITY_THRESHOLD,
+    min_n: int = MIN_N_FOR_ACTION,) -> tuple[str, float, float]:
+    
     p_better, p_worse = _probabilities_against_baseline(posterior, baseline)
 
     if n < min_n:

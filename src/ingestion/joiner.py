@@ -5,8 +5,6 @@ from src.ingestion.meta_loader import Ad, Adset, Campaign, MetaData, load_meta
 
 from ..config import load_config
 
-# Config, not a literal: these platforms carry no ad ids so they can never be
-# scored, and the same list decides what the train/holdout split keeps.
 ORGANIC_OR_DIRECT = set(load_config()["split"]["organic_direct_platforms"])
 
 
@@ -51,10 +49,6 @@ def join_conversations_to_meta(conversations: list[Conversation], meta: MetaData
 
 
 def group_by_level(joined: list[JoinedConversation]) -> tuple[dict, dict, dict]:
-    """Conversations grouped three ways from one pass over joined: by ad id,
-    by adset id, by campaign id. Shared by scoring/aggregator.py (success/failure
-    counts) and scoring/revenue.py (money) -- they used to each re-walk joined
-    with an identical loop; this is the one place that walk happens now."""
     from collections import defaultdict
 
     by_ad, by_adset, by_campaign = defaultdict(list), defaultdict(list), defaultdict(list)
