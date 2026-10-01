@@ -55,7 +55,8 @@ def roas_details_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: f
     prior_mean = sum(known) / len(known) if known else 0.0
     shrunk = shrunk_roas_by_id(revenue_by_id, spend_by_id, prior_strength)
     return {
-        id_: {"revenue": rev.total_revenue, "orders": rev.n, "spend": spend_by_id.get(id_),
+        id_: {"revenue": rev.total_revenue, "sales": rev.sales, "resolved_conversations": rev.n,
+              "spend": spend_by_id.get(id_),
               "raw_roas": raw[id_], "portfolio_mean_roas": prior_mean,
               "shrinkage_strength": prior_strength, "shrunk_roas": shrunk[id_]}
         for id_, rev in revenue_by_id.items()
@@ -83,10 +84,18 @@ def shrunk_roas_by_id(revenue_by_id: dict, spend_by_id: dict, prior_strength: fl
     }
 
 
-def baseline_cpa(revenue_by_id: dict, spend_by_id: dict) -> float | None:
+def baseline_cpa_details(revenue_by_id: dict, spend_by_id: dict) -> dict:
+    """The level's typical cost per SALE: all spend over all real sales.
+    (It used to divide by resolved conversations, which counted ghosted and
+    cancelled chats as if they were orders.)"""
     total_spend = sum(spend_by_id.get(id_, 0.0) for id_ in revenue_by_id)
-    total_orders = sum(rev.n for rev in revenue_by_id.values())
-    return total_spend / total_orders if total_orders else None
+    total_sales = sum(rev.sales for rev in revenue_by_id.values())
+    return {"total_spend": total_spend, "total_sales": total_sales,
+            "baseline_cost_per_sale": total_spend / total_sales if total_sales else None}
+
+
+def baseline_cpa(revenue_by_id: dict, spend_by_id: dict) -> float | None:
+    return baseline_cpa_details(revenue_by_id, spend_by_id)["baseline_cost_per_sale"]
 
 
 def print_roas(label, rows):

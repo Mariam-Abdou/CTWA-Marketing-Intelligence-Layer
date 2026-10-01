@@ -73,7 +73,7 @@ def resolves_in_time(
 
 
 def build_stop_rule(
-    spend: float | None, orders: int, baseline_cpa: float | None,
+    spend: float | None, sales: int, baseline_cpa: float | None,
     insights: list[DailyInsight],
 ) -> str:
     if baseline_cpa is None:
@@ -85,28 +85,28 @@ def build_stop_rule(
     stop_line = baseline_cpa * CPA_STOP_MULTIPLIER
 
     if spend >= judge_line:
-        if orders == 0:
+        if sales == 0:
             return (
                 f"Already spent {spend:,.0f} (past the {judge_line:,.0f} needed to judge) "
-                "with zero orders. Stop now."
+                "with zero sales. Stop now."
             )
-        cpa = spend / orders
+        cpa = spend / sales
         if cpa > stop_line:
             return (
-                f"Already spent {spend:,.0f} at a CPA of {cpa:,.0f}, above the "
+                f"Already spent {spend:,.0f} at {cpa:,.0f} per sale, above the "
                 f"{stop_line:,.0f} stop line ({CPA_STOP_MULTIPLIER}x baseline). Stop now."
             )
-        cpa = spend / orders
+        cpa = spend / sales
         return (
-            f"Spent {spend:,.0f} so far ({orders} order{'s' if orders != 1 else ''}, CPA "
-            f"{cpa:,.0f}), past the {judge_line:,.0f} needed to judge and still under the "
-            f"{stop_line:,.0f} CPA stop line -- keep it running and re-check after the next "
-            "few orders."
+            f"Spent {spend:,.0f} so far ({sales} sale{'s' if sales != 1 else ''}, "
+            f"{cpa:,.0f} per sale), past the {judge_line:,.0f} needed to judge and still under the "
+            f"{stop_line:,.0f} per-sale stop line -- keep it running and re-check after the next "
+            "few sales."
         )
 
     remaining = judge_line - spend
     stop_clause = (
-        f"Stop it then if it still has zero orders, or if its CPA is above "
+        f"Stop it then if it still has zero sales, or if its cost per sale is above "
         f"{stop_line:,.0f} ({CPA_STOP_MULTIPLIER}x baseline)."
     )
     if not per_day:

@@ -2,6 +2,15 @@
 # Every value here used to be a hardcoded Python constant scattered across
 # src/scoring and src/decision.
 
+data:
+  # What src.pipeline scores. full_train = conv_train + conv_val: the
+  # merchant-facing run uses every non-holdout conversation. Evaluation
+  # scripts (scripts/tune_threshold.py, time_split_brier.py) keep their own
+  # train/val paths. The holdout (data/holdout/) is never read here.
+  conversations: "data/train/full_train.json"
+  meta: "data/train/meta_full_train.json"
+  products: "data/train/products.json"
+
 scoring:
   # Beta-Binomial prior strength (alpha+beta), now FIT FROM THE DATA each run
   # (method of moments over that level's own raw rates -- see

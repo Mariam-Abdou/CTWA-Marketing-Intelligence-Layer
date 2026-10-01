@@ -57,7 +57,7 @@ def build_allocation_plan(
     rates: dict[str, RawCounts],
     daily_insights_by_ad: dict[str, list[DailyInsight]] | None = None,
     shrunk_roas: dict[str, float] | None = None,
-    spend_and_orders: dict[str, tuple[float, int]] | None = None,
+    spend_and_sales: dict[str, tuple[float, int]] | None = None,
     baseline_cpa: float | None = None,
     horizon_days: float = 30.0,
     proposals: list[ProposedTest] | None = None,
@@ -89,9 +89,9 @@ def build_allocation_plan(
         # change the outcome when the raw action is "scale" (applied=True).
         if daily_insights_by_ad is not None:
             t["fatigue"] = fatigue_check(daily_insights_by_ad.get(id_, []))
-        if spend_and_orders is not None:
-            _spend, _orders = spend_and_orders.get(id_, (None, 0))
-            t["cpa"] = cpa_check(_spend, _orders, baseline_cpa)
+        if spend_and_sales is not None:
+            _spend, _sales = spend_and_sales.get(id_, (None, 0))
+            t["cpa"] = cpa_check(_spend, _sales, baseline_cpa)
 
         if action == "scale" and daily_insights_by_ad is not None:
             t["fatigue_applied"] = True
@@ -106,16 +106,16 @@ def build_allocation_plan(
             if t["fatigue"]["frequency_warning"]:
                 warned_ids.append(id_)
 
-        if action == "scale" and spend_and_orders is not None:
-            spend, orders = spend_and_orders.get(id_, (None, 0))
+        if action == "scale" and spend_and_sales is not None:
+            spend, sales = spend_and_sales.get(id_, (None, 0))
             t["cpa_applied"] = True
             if t["cpa"]["underperforming"]:
-                t["route"] = "test pool: scale vetoed by cost per order"
+                t["route"] = "test pool: scale vetoed by cost per sale"
                 underperforming_ids.append(id_)
                 explore_pool.append({
                     "id": id_, "posterior": posterior, "baseline": baseline,
                     "p_better": p_better, "p_worse": p_worse, "reason": "underperforming",
-                    "spend": spend, "orders": orders,
+                    "spend": spend, "sales": sales,
                 })
                 continue
 
@@ -168,7 +168,7 @@ def build_allocation_plan(
     selection = select_explore_tests(
         explore_pool, rates, daily_insights_by_ad, _roas, baseline_cpa,
         horizon_days, proposals, MAX_EXPLORE_TESTS, EXPLORE_SHARE,
-        spend_and_orders=spend_and_orders,
+        spend_and_sales=spend_and_sales,
     )
     plan.explore = selection.kept
     plan.proposed = selection.proposed

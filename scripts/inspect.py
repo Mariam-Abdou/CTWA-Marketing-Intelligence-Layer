@@ -151,8 +151,8 @@ def main():
         rev = revenue_by_level[args.level]
         spd = spend_by_level[args.level]
         baseline_cpa = compute_baseline_cpa(rev, spd)
-        spend, orders = spd.get(args.id), (rev[args.id].n if args.id in rev else 0)
-        underperforming = is_underperforming(spend, orders, baseline_cpa)
+        spend, sales = spd.get(args.id), (rev[args.id].sales if args.id in rev else 0)
+        underperforming = is_underperforming(spend, sales, baseline_cpa)
 
         final_action = resolve_action(raw_action, is_fatigued=fatigued, is_underperforming=underperforming)
         print(f"  P(better)={p_better:.4f}  P(worse)={p_worse:.4f}  n={rc.n}")

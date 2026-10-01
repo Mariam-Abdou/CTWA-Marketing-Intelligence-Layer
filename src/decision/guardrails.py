@@ -89,33 +89,34 @@ def frequency_warning(daily_insights: list[DailyInsight]) -> bool:
     return fatigue_check(daily_insights)["frequency_warning"]
 
 
-def cpa_check(spend: float | None, orders: int, baseline_cpa: float | None) -> dict:
-    """The CPA veto with every number it read. is_underperforming() returns
-    its "underperforming" field."""
+def cpa_check(spend: float | None, sales: int, baseline_cpa: float | None) -> dict:
+    """The cost-per-sale veto with every number it read. is_underperforming()
+    returns its "underperforming" field. baseline_cpa is the level's baseline
+    cost per SALE (audit.baseline_cpa)."""
     judge_line = baseline_cpa * MIN_SPEND_MULTIPLIER if baseline_cpa is not None else None
     stop_line = baseline_cpa * CPA_STOP_MULTIPLIER if baseline_cpa is not None else None
-    cpa = spend / orders if spend is not None and orders else None
+    cpa = spend / sales if spend is not None and sales else None
 
     if spend is None or baseline_cpa is None:
         under, reason = False, "no spend or no baseline CPA to compare against"
     elif spend < judge_line:
         under, reason = False, "spend has not reached the judging line yet"
-    elif orders == 0:
-        under, reason = True, "spent past the judging line with zero orders"
+    elif sales == 0:
+        under, reason = True, "spent past the judging line with zero sales"
     else:
         under = cpa > stop_line
-        reason = "CPA above the stop line" if under else "CPA under the stop line"
+        reason = "cost per sale above the stop line" if under else "cost per sale under the stop line"
 
     return {
-        "spend": spend, "orders": orders, "cpa": cpa, "baseline_cpa": baseline_cpa,
+        "spend": spend, "sales": sales, "cost_per_sale": cpa, "baseline_cost_per_sale": baseline_cpa,
         "min_spend_multiplier": MIN_SPEND_MULTIPLIER, "judge_line": judge_line,
         "stop_multiplier": CPA_STOP_MULTIPLIER, "stop_line": stop_line,
         "underperforming": under, "reason": reason,
     }
 
 
-def is_underperforming(spend: float | None, orders: int, baseline_cpa: float | None) -> bool:
-    return cpa_check(spend, orders, baseline_cpa)["underperforming"]
+def is_underperforming(spend: float | None, sales: int, baseline_cpa: float | None) -> bool:
+    return cpa_check(spend, sales, baseline_cpa)["underperforming"]
 
 
 if __name__ == "__main__":

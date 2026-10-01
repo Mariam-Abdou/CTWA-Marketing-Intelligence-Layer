@@ -70,7 +70,8 @@ def _entities(meta, scored_ids):
     return out
 
 
-def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, horizon_days,
+def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, overall_baseline_inputs,
+                 horizon_days,
                  prior_details, levels, adset_to_campaign, ad_to_adset,
                  campaign_posteriors, adset_posteriors):
     db_cfg = _cfg.get("trace_db", {})
@@ -156,12 +157,15 @@ def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, h
         "min_n_for_action": MIN_N_FOR_ACTION,
         "min_success_amount": MIN_SUCCESS_AMOUNT,
         "overall_baseline": overall_baseline,
+        "overall_baseline_inputs": overall_baseline_inputs,
         "horizon_days": horizon_days,
         "prior_strength_fit": prior_details,
         "exploit_share": _cfg["allocation"]["exploit_share"],
         "explore_share": _cfg["allocation"]["explore_share"],
         "max_explore_tests": _cfg["allocation"]["max_explore_tests"],
-        "per_level": {lvl: {"baseline_cpa": lv["baseline_cpa"], "median_roas": lv["median_roas"]}
+        "per_level": {lvl: {"baseline_cost_per_sale": lv["baseline_cpa"],
+                            "baseline_cost_per_sale_inputs": lv.get("baseline_cpa_inputs"),
+                            "median_roas": lv["median_roas"]}
                       for lvl, lv in levels.items()},
         "join_counts": {"scored": len(join_result.scoreable),
                         "organic_or_direct": len(join_result.organic_or_direct),

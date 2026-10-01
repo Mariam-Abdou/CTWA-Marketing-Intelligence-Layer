@@ -133,9 +133,9 @@ HELD_BACK_DETAIL = {
         "The numbers said scale, but the same people keep seeing this and have stopped "
         "clicking. Spending more would buy the same tired audience again."
     ),
-    "cost per order": (
-        "The numbers said scale, but each order is costing far more than this shop "
-        "normally pays, so more budget would buy expensive orders."
+    "cost per sale": (
+        "The numbers said scale, but each sale is costing far more than this shop "
+        "normally pays, so more budget would buy expensive sales."
     ),
 }
 
@@ -208,14 +208,14 @@ def show_test(title, budget, hypothesis, stop_rule, note=None):
         st.markdown(stop_rule)
 
 
-def money_row(r, spend, revenue, orders, roas, cost_per_order):
+def money_row(r, spend, revenue, sales, roas, cost_per_sale):
     return {
         "Name": r["name"],
         "Spend (EGP)": spend,
         "Revenue (EGP)": revenue,
-        "Orders": orders,
+        "Sales": sales,
         "ROAS": roas,
-        "Cost / order (EGP)": cost_per_order,
+        "Cost / sale (EGP)": cost_per_sale,
     }
 
 
@@ -347,12 +347,12 @@ else:
             c1.metric("Total spend", f"{totals['spend']:,.0f} EGP" if totals["spend"] else "—")
             c2.metric("Total revenue", f"{totals['revenue']:,.0f} EGP" if totals["revenue"] else "—")
             c3.metric("ROAS", f"{totals['roas']:.2f}" if totals["roas"] is not None else "—")
-            c4.metric("Orders", totals["orders"] or "—")
+            c4.metric("Sales", totals.get("sales") or "—")
 
             table = pd.DataFrame([
                 money_row(
-                    r, r.get("spend"), r.get("revenue"), r.get("orders"),
-                    r.get("roas"), r.get("cost_per_order"),
+                    r, r.get("spend"), r.get("revenue"), r.get("sales"),
+                    r.get("roas"), r.get("cost_per_sale"),
                 )
                 for r in level["rows"]
             ])
