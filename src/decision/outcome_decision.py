@@ -18,18 +18,25 @@ def _probabilities_against_baseline(posterior: Posterior, baseline: float) -> tu
     return p_better, p_worse
 
 
-def decide(posterior: Posterior, baseline: float, n: int, probability_threshold: float = PROBABILITY_THRESHOLD,
-    min_n: int = MIN_N_FOR_ACTION,) -> tuple[str, float, float]:
-    
+def decide_with_rule(posterior: Posterior, baseline: float, n: int,
+                     probability_threshold: float = PROBABILITY_THRESHOLD,
+                     min_n: int = MIN_N_FOR_ACTION) -> tuple[str, float, float, str]:
+    """decide() plus the name of the rule that fired, for the decision trace."""
     p_better, p_worse = _probabilities_against_baseline(posterior, baseline)
 
     if n < min_n:
-        return "hold", p_better, p_worse
+        return "hold", p_better, p_worse, f"n={n} < min_n_for_action={min_n}: too little evidence to act"
     if p_better >= probability_threshold:
-        return "scale", p_better, p_worse
+        return "scale", p_better, p_worse, f"P(better than baseline)={p_better:.3f} >= threshold {probability_threshold}"
     if p_worse >= probability_threshold:
-        return "kill", p_better, p_worse
-    return "hold", p_better, p_worse
+        return "kill", p_better, p_worse, f"P(worse than baseline)={p_worse:.3f} >= threshold {probability_threshold}"
+    return "hold", p_better, p_worse, f"neither P(better)={p_better:.3f} nor P(worse)={p_worse:.3f} reaches {probability_threshold}"
+
+
+def decide(posterior: Posterior, baseline: float, n: int, probability_threshold: float = PROBABILITY_THRESHOLD,
+    min_n: int = MIN_N_FOR_ACTION,) -> tuple[str, float, float]:
+    action, p_better, p_worse, _ = decide_with_rule(posterior, baseline, n, probability_threshold, min_n)
+    return action, p_better, p_worse
 
 
 def report(label, posteriors, get_baseline, get_n):

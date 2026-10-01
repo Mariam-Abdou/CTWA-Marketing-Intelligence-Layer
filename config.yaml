@@ -114,3 +114,11 @@ reasoning:
   # to uncached rows, so this cost is paid once.
   min_interval_seconds: 2.1
   cache_path: "outputs/reasoning_cache.json"
+
+trace_db:
+  # Every input, intermediate value and decision behind every id, written at
+  # the end of each run (src/trace.py -> src/storage/trace_db.py). The app and
+  # the chatbot read this; they never recompute a decision.
+  path: "outputs/trace.db"
+  # Older runs are pruned from the database (not from outputs/*.csv|json).
+  keep_runs: 10

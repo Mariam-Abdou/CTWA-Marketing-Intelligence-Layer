@@ -101,7 +101,7 @@ def _template(f: DecisionFacts) -> str:
     )
 
 
-def build_hypotheses(facts_list: list[DecisionFacts]) -> dict[str, str]:
+def build_hypotheses(facts_list: list[DecisionFacts], provenance: dict | None = None) -> dict[str, str]:
     """facts_list is the explore rows only -- everything else has no hypothesis."""
     if not facts_list:
         return {}
@@ -118,6 +118,8 @@ def build_hypotheses(facts_list: list[DecisionFacts]) -> dict[str, str]:
         )
         out[f.id] = text
         counts[source] = counts.get(source, 0) + 1
+        if provenance is not None:
+            provenance[f.id] = {"source": source, "prompt": _facts_text(f)}
 
     save_cache(cache)
     report("Hypotheses", counts)
@@ -162,7 +164,7 @@ def _proposed_facts_text(p) -> str:
     )
 
 
-def rewrite_proposed(proposals: list, baseline: float) -> dict[str, str]:
+def rewrite_proposed(proposals: list, baseline: float, provenance: dict | None = None) -> dict[str, str]:
     """Rewrites each never-run ProposedTest's hypothesis in merchant language.
     Its deterministic `hypothesis` field (built in new_tests.py) is the
     fallback here -- same offline-safe pattern as build_hypotheses(). Runs
@@ -184,6 +186,8 @@ def rewrite_proposed(proposals: list, baseline: float) -> dict[str, str]:
         )
         out[p.id] = text
         counts[source] = counts.get(source, 0) + 1
+        if provenance is not None:
+            provenance[p.id] = {"source": source, "prompt": _proposed_facts_text(p)}
 
     save_cache(cache)
     report("Proposed-test hypotheses", counts)

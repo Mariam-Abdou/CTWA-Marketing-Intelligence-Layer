@@ -22,7 +22,7 @@ from .guardrails import (
     FATIGUE_FREQUENCY_THRESHOLD,
     MIN_SPEND_MULTIPLIER,
 )
-from .stop_rules import build_stop_rule, daily_spend_rate, resolves_in_time
+from .stop_rules import build_stop_rule, daily_spend_rate, resolution_check
 from .new_tests import ProposedTest
 from ..scoring.corrector import Posterior
 
@@ -44,6 +44,8 @@ class ExploreSelection:
     proposed: list[ProposedTest] = field(default_factory=list)
     unresolvable: list[str] = field(default_factory=list)
     dropped_from_explore: list[str] = field(default_factory=list)  # includes unresolvable
+    # id -> every number the selection read for that candidate (trace only)
+    details: dict[str, dict] = field(default_factory=dict)
 
 
 def _priority(id_: str, posterior: Posterior | None, roas) -> float:
@@ -123,7 +125,9 @@ def select_explore_tests(
     for c in explore_pool:
         spend, _ = _spend_orders(c["id"])
         per_day = daily_spend_rate((daily_insights_by_ad or {}).get(c["id"], []))
-        if resolves_in_time(spend, baseline_cpa, per_day, horizon_days):
+        check = resolution_check(spend, baseline_cpa, per_day, horizon_days)
+        selection.details[c["id"]] = {"pool_reason": c["reason"], "resolution": check}
+        if check["resolvable"]:
             resolvable.append(c)
         else:
             selection.unresolvable.append(c["id"])
@@ -132,6 +136,14 @@ def select_explore_tests(
     resolvable.sort(key=lambda c: _priority(c["id"], c["posterior"], roas), reverse=True)
     kept, dropped = resolvable[:max_tests], resolvable[max_tests:]
     selection.dropped_from_explore = [c["id"] for c in dropped] + selection.unresolvable
+    for rank, c in enumerate(resolvable, start=1):
+        upper = c["posterior"].interval_high if c["posterior"] is not None else 1.0
+        selection.details[c["id"]]["priority"] = {
+            "interval_high": upper, "shrunk_roas": roas(c["id"]),
+            "priority": _priority(c["id"], c["posterior"], roas),
+            "rank": rank, "pool_size": len(resolvable), "max_tests": max_tests,
+            "kept": rank <= max_tests,
+        }
 
     # 3. Whatever live entities didn't fill goes to combinations never run.
     free_slots = max_tests - len(kept)
@@ -146,6 +158,11 @@ def select_explore_tests(
     for c in kept:
         id_ = c["id"]
         spend, orders = _spend_orders(id_)
+        selection.details[id_]["budget"] = {
+            "explore_share": explore_share, "tests_funded": total_tests,
+            "live_tests": len(kept), "proposed_tests": len(selection.proposed),
+            "budget_share": per_experiment_share,
+        }
         selection.kept.append(
             ExploreExperiment(
                 id=id_, name=f"test_{id_}", hypothesis=_hypothesis_for(c, baseline_cpa),
