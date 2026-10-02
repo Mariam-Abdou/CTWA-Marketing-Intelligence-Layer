@@ -33,10 +33,14 @@ INTENTS = {
     "compare_or_list": "across many entities: lists, rankings, totals, counts, comparisons, 'which ... best/worst'",
     "method": "how the system works: definitions, terms, how a number is calculated, what the system cannot know",
     "conversation_text": "what customers said, asked, complained about, why they ghosted/refunded -- needs reading chat messages",
-    "new_decision": "asks for a decision the system did not make: budget amounts, what-ifs, predictions, new campaigns, overriding or changing a stored decision, the bot's own opinion",
+    "new_decision": "asks for something the stored decision cannot answer: a specific budget amount or % change, a what-if or prediction, a new campaign/creative, changing or overriding a stored decision, the bot's OWN opinion instead of the system's",
     "out_of_scope": "nothing to do with this merchant's ads, scores or decisions",
     "unclear": "cannot tell what is being asked, or which entity, even with the history",
 }
+
+
+# intents where "which entity" matters (selection fills in a missing id)
+ENTITY_INTENTS = {"explain_entity", "new_decision", "conversation_text", "compare_or_list"}
 
 
 @dataclass
@@ -68,12 +72,17 @@ Intents:
 {intents}
 
 Rules:
-- "What does the system recommend for X?" or "why is X on hold?" = explain_entity, NOT new_decision.
-- "Should I double / raise / cut X's budget?", "what if I ...", "will sales go up", "predict",
-  "make a new campaign", "change X to scale", "what would YOU do" = new_decision.
+- Asking WHAT the system decided or recommends for an entity, in any wording, is explain_entity:
+  the stored decision answers it. Examples: "what is the decision for this campaign",
+  "what should be done with X", "what should I do with this ad", "is X scaled or killed",
+  "اعمل ايه في الحملة دي", "el qarar eh?".
+- new_decision ONLY when the stored decision cannot answer it: "should I double / raise / cut
+  X's budget", "how much should I spend", "what if I ...", "will sales go up", "predict",
+  "make a new campaign", "change X to scale", "ignore the system", "what would YOU do".
 - Questions about the meaning of a term in general = method. About that term FOR a specific
   entity (its interval, its fatigue) = explain_entity.
-- If the user has selected an entity and says "this / it / here", the question is about it.
+- If the user has selected an entity and the question does not name a different one, the
+  question is about the selected entity: put its id in entity_ids.
 - Use the chat history to resolve "that one", "the other", "and its spend?".
 - entity_ids: copy exact ids from the list. Empty if none. Several if comparing.
 - If a reference matches several entities and nothing narrows it down, intent = unclear.
@@ -124,7 +133,13 @@ class LLMGate:
             r = _fallback("llm_error", question, selected_id)
             r.meta = meta
             return r
-        return _validate(data, self.index, f"llm:{self.model}", meta, question)
+        r = _validate(data, self.index, f"llm:{self.model}", meta, question)
+        # The selection is a fact, not a guess: if the model named no entity,
+        # an entity-level question is about the one the user has open.
+        if selected_id and not r.entity_ids and r.intent in ENTITY_INTENTS:
+            r.entity_ids = [selected_id]
+            r.meta = {**r.meta, "entity_from_selection": True}
+        return r
 
 
 def _validate(data: dict, index: EntityIndex, source: str, meta: dict, question: str) -> GateResult:
