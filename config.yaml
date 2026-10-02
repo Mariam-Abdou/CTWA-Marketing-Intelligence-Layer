@@ -131,3 +131,20 @@ trace_db:
   path: "outputs/trace.db"
   # Older runs are pruned from the database (not from outputs/*.csv|json).
   keep_runs: 10
+
+chat:
+  db_path: "outputs/trace.db"
+  # Same Groq account/key as reasoning (reasoning.api_key_env / base_url).
+  # Gate = small, fast model: classification + rewrite only.
+  gate_model: "openai/gpt-oss-20b"
+  # Answer = larger model, writes the grounded reply (next stage).
+  answer_model: "openai/gpt-oss-120b"
+  reasoning_effort: "low"
+  max_tokens: 600
+  temperature: 0
+  # Below this the gate's answer is not trusted: ask a clarifying question.
+  # The LLM's self-reported confidence is NOT calibrated by default --
+  # scripts/eval_gate.py measures how well it tracks accuracy.
+  min_confidence: 0.6
+  history_turns: 4
+  max_tool_calls: 3

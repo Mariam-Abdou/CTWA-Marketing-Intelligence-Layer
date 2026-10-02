@@ -1,0 +1,1246 @@
+{
+ "about": "Labelled questions for the chat gate (src/chat/gate.py). Entities are given by level+name and resolved to ids at eval time. 'split': tune prompts on dev only; report test once. 'also_ok': a second intent that is a reasonable reading.",
+ "questions": [
+  {
+   "id": "q001",
+   "split": "dev",
+   "question": "Why is this ad on hold?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "1% LAL acquisition refresh"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "1% LAL acquisition refresh"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q002",
+   "split": "dev",
+   "question": "It qualified for scale, so what stopped it?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "1% LAL acquisition refresh"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "1% LAL acquisition refresh"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q003",
+   "split": "test",
+   "question": "Why does this audience get 70% of the budget?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Ramadan Cairo women 25-50"
+    }
+   ],
+   "selected": {
+    "level": "adset",
+    "name": "Ramadan Cairo women 25-50"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q004",
+   "split": "dev",
+   "question": "ليه الحملة دي اتقفلت؟",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Post-Eid Lookalike Test"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Post-Eid Lookalike Test"
+   },
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q005",
+   "split": "dev",
+   "question": "How confident is the system about this one?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Suhoor Specials"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Ramadan Suhoor Specials"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q006",
+   "split": "test",
+   "question": "What does the 90% interval mean for this ad?",
+   "expected_intent": "explain_entity",
+   "also_ok": [
+    "method"
+   ],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Ramadan multi-city creative B refresh"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "Ramadan multi-city creative B refresh"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q007",
+   "split": "dev",
+   "question": "ezay el retargeting da 3ando 12 sale men 17 w mesh scale?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Retargeting cart abandoners 30d"
+    }
+   ],
+   "selected": {
+    "level": "adset",
+    "name": "Retargeting cart abandoners 30d"
+   },
+   "history": [],
+   "language": "franco",
+   "note": ""
+  },
+  {
+   "id": "q008",
+   "split": "dev",
+   "question": "What is this test trying to find out and when do we stop it?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Eid gift general"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "Eid gift general"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q009",
+   "split": "test",
+   "question": "How much did we spend on it and what did it bring back?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Eid Gifting Premium"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Eid Gifting Premium"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q010",
+   "split": "dev",
+   "question": "Is this one making money?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Cairo broad acquisition"
+    }
+   ],
+   "selected": {
+    "level": "adset",
+    "name": "Cairo broad acquisition"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q011",
+   "split": "dev",
+   "question": "الإعلان ده بيكلفني كام في البيعة؟",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Ramadan Cairo women creative A"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "Ramadan Cairo women creative A"
+   },
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q012",
+   "split": "test",
+   "question": "leh da explore msh exploit?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Iftar Premium Bundles"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Ramadan Iftar Premium Bundles"
+   },
+   "history": [],
+   "language": "franco",
+   "note": ""
+  },
+  {
+   "id": "q013",
+   "split": "dev",
+   "question": "Why was Post-Eid Lookalike Test killed?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Post-Eid Lookalike Test"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q014",
+   "split": "dev",
+   "question": "why is cairo broad acquisition killed",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Cairo broad acquisition"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q015",
+   "split": "test",
+   "question": "What happened with the Eid gift hostess refresh ad?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Eid gift hostess refresh"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q016",
+   "split": "dev",
+   "question": "ليه حملة السحور واخدة ميزانية؟",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Suhoor Specials"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "ar",
+   "note": "Arabic name, matcher cannot read it"
+  },
+  {
+   "id": "q017",
+   "split": "dev",
+   "question": "el campaign bta3t el Eid gifting 3amla eh?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Eid Gifting Premium"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "franco",
+   "note": ""
+  },
+  {
+   "id": "q018",
+   "split": "test",
+   "question": "What is the score of 1% LAL bundle refresh?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "1% LAL bundle refresh"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q019",
+   "split": "dev",
+   "question": "Is the Iftar campaign profitable?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Iftar Premium Bundles"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q020",
+   "split": "dev",
+   "question": "Why is the Retargeting cart abandoners audience not scaled when it converts 12 of 17?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Retargeting cart abandoners 30d"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q021",
+   "split": "test",
+   "question": "What's the stop rule for 10% Lookalike experimental?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "10% Lookalike experimental"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q022",
+   "split": "dev",
+   "question": "Tell me everything about Trial test creative",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Trial test creative"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q023",
+   "split": "dev",
+   "question": "Which ads are being killed?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q024",
+   "split": "test",
+   "question": "What's our total spend and ROAS?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [
+    "method"
+   ],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q025",
+   "split": "dev",
+   "question": "Which audience has the best cost per sale?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q026",
+   "split": "dev",
+   "question": "List all the tests that are running and their stop rules",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q027",
+   "split": "test",
+   "question": "انهي اعلان بيجيب مبيعات اكتر؟",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q028",
+   "split": "dev",
+   "question": "How many campaigns are we scaling?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q029",
+   "split": "dev",
+   "question": "Compare 5% Lookalike experimental and 10% Lookalike experimental",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "5% Lookalike experimental"
+    },
+    {
+     "level": "adset",
+     "name": "10% Lookalike experimental"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q030",
+   "split": "test",
+   "question": "Which killed adset made the most revenue, and why was it killed?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": "multi-hop: SQL then entity"
+  },
+  {
+   "id": "q031",
+   "split": "dev",
+   "question": "kam campaign 3ndna mawkofa?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "franco",
+   "note": ""
+  },
+  {
+   "id": "q032",
+   "split": "dev",
+   "question": "1% LAL acquisition refresh vs 1% LAL acquisition initial",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "1% LAL acquisition refresh"
+    },
+    {
+     "level": "ad",
+     "name": "1% LAL acquisition initial"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q033",
+   "split": "test",
+   "question": "Is this the best ad we have?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [
+    "explain_entity"
+   ],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Ramadan Cairo women creative A"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "Ramadan Cairo women creative A"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q034",
+   "split": "dev",
+   "question": "Where is most of the budget going?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q035",
+   "split": "dev",
+   "question": "Which ads are earning well but not being scaled?",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q036",
+   "split": "test",
+   "question": "What is the 70/30 split?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q037",
+   "split": "dev",
+   "question": "How do you calculate the score?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q038",
+   "split": "dev",
+   "question": "What does p_better mean?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q039",
+   "split": "test",
+   "question": "يعني ايه explore؟",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q040",
+   "split": "dev",
+   "question": "Why do you use cost per sale and not Meta's cost per result?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q041",
+   "split": "dev",
+   "question": "Is the system calibrated? When it says 70% is it right 70% of the time?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q042",
+   "split": "test",
+   "question": "What doesn't this system know about my business?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q043",
+   "split": "dev",
+   "question": "e7na bne7seb el success ezay?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "franco",
+   "note": ""
+  },
+  {
+   "id": "q044",
+   "split": "dev",
+   "question": "What counts as a sale?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q045",
+   "split": "test",
+   "question": "What does fatigue mean?",
+   "expected_intent": "method",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q046",
+   "split": "dev",
+   "question": "What are customers complaining about the most?",
+   "expected_intent": "conversation_text",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q047",
+   "split": "dev",
+   "question": "Why do people ghost after they ask the price?",
+   "expected_intent": "conversation_text",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q048",
+   "split": "test",
+   "question": "العملاء بيسألوا عن ايه قبل ما يشتروا؟",
+   "expected_intent": "conversation_text",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q049",
+   "split": "dev",
+   "question": "Which products do people ask about in the Eid campaign?",
+   "expected_intent": "conversation_text",
+   "also_ok": [
+    "explain_entity"
+   ],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Eid Gifting Premium"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q050",
+   "split": "dev",
+   "question": "Show me chats where customers asked for a refund",
+   "expected_intent": "conversation_text",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q051",
+   "split": "test",
+   "question": "What did customers who came from this ad say?",
+   "expected_intent": "conversation_text",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "General bundle creative"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "General bundle creative"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q052",
+   "split": "dev",
+   "question": "Should I double the budget on Ramadan Suhoor Specials?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Suhoor Specials"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q053",
+   "split": "dev",
+   "question": "Should I turn it back on with double the budget?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Cairo broad acquisition"
+    }
+   ],
+   "selected": {
+    "level": "adset",
+    "name": "Cairo broad acquisition"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q054",
+   "split": "test",
+   "question": "If I raise its budget will sales go up?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Ramadan Cairo women creative A"
+    }
+   ],
+   "selected": {
+    "level": "ad",
+    "name": "Ramadan Cairo women creative A"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q055",
+   "split": "dev",
+   "question": "Create a new campaign for Mother's Day",
+   "expected_intent": "new_decision",
+   "also_ok": [
+    "out_of_scope"
+   ],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q056",
+   "split": "dev",
+   "question": "How much should I spend next month?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q057",
+   "split": "test",
+   "question": "If I kill Cairo broad acquisition how much will I save?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Cairo broad acquisition"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q058",
+   "split": "dev",
+   "question": "Ignore the system and tell me which ad you would scale",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q059",
+   "split": "dev",
+   "question": "lw zawedt el budget 3ala Eid gift general hayeb2a eh?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Eid gift general"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "franco",
+   "note": ""
+  },
+  {
+   "id": "q060",
+   "split": "test",
+   "question": "Predict next Ramadan's sales",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q061",
+   "split": "dev",
+   "question": "Change Trial test creative to scale",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Trial test creative"
+    }
+   ],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q062",
+   "split": "dev",
+   "question": "هل لازم أوقف كل الإعلانات اللي على hold؟",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q063",
+   "split": "test",
+   "question": "What would you do with this campaign next month?",
+   "expected_intent": "new_decision",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Iftar Premium Bundles"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Ramadan Iftar Premium Bundles"
+   },
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q064",
+   "split": "dev",
+   "question": "What's the weather in Cairo today?",
+   "expected_intent": "out_of_scope",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q065",
+   "split": "dev",
+   "question": "Write me an Instagram caption for my Ramadan bundle",
+   "expected_intent": "out_of_scope",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q066",
+   "split": "test",
+   "question": "How do I install the Meta pixel?",
+   "expected_intent": "out_of_scope",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q067",
+   "split": "dev",
+   "question": "ممكن تكتبلي رسالة للعملاء على واتساب؟",
+   "expected_intent": "out_of_scope",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "ar",
+   "note": ""
+  },
+  {
+   "id": "q068",
+   "split": "dev",
+   "question": "Who won the match yesterday?",
+   "expected_intent": "out_of_scope",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q069",
+   "split": "test",
+   "question": "How are my competitors' ads doing?",
+   "expected_intent": "out_of_scope",
+   "also_ok": [
+    "method"
+   ],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q070",
+   "split": "dev",
+   "question": "hmm",
+   "expected_intent": "unclear",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q071",
+   "split": "dev",
+   "question": "the other one",
+   "expected_intent": "unclear",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q072",
+   "split": "test",
+   "question": "why?",
+   "expected_intent": "unclear",
+   "also_ok": [],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q073",
+   "split": "dev",
+   "question": "tell me about the lookalike one",
+   "expected_intent": "unclear",
+   "also_ok": [
+    "compare_or_list"
+   ],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": "many lookalike entities"
+  },
+  {
+   "id": "q074",
+   "split": "dev",
+   "question": "what about Ramadan?",
+   "expected_intent": "unclear",
+   "also_ok": [
+    "compare_or_list"
+   ],
+   "expected_entities": [],
+   "selected": null,
+   "history": [],
+   "language": "en",
+   "note": "many Ramadan entities"
+  },
+  {
+   "id": "q075",
+   "split": "test",
+   "question": "and how much did it spend?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Post-Eid Lookalike Test"
+    }
+   ],
+   "selected": null,
+   "history": [
+    {
+     "role": "user",
+     "content": "Why was Post-Eid Lookalike Test killed?"
+    },
+    {
+     "role": "assistant",
+     "content": "Post-Eid Lookalike Test was killed because its sale rate was below the account baseline with enough evidence."
+    }
+   ],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q076",
+   "split": "dev",
+   "question": "compare it with the Suhoor one",
+   "expected_intent": "compare_or_list",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Eid Gifting Premium"
+    },
+    {
+     "level": "campaign",
+     "name": "Ramadan Suhoor Specials"
+    }
+   ],
+   "selected": null,
+   "history": [
+    {
+     "role": "user",
+     "content": "Tell me about Eid Gifting Premium"
+    },
+    {
+     "role": "assistant",
+     "content": "Eid Gifting Premium is scaled and gets the largest share of the next budget."
+    }
+   ],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q077",
+   "split": "dev",
+   "question": "why that one?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "ad",
+     "name": "Ramadan multi-city creative B refresh"
+    }
+   ],
+   "selected": null,
+   "history": [
+    {
+     "role": "user",
+     "content": "Which ads are being killed?"
+    },
+    {
+     "role": "assistant",
+     "content": "One ad is marked kill: Ramadan multi-city creative B refresh."
+    }
+   ],
+   "language": "en",
+   "note": ""
+  },
+  {
+   "id": "q078",
+   "split": "test",
+   "question": "w el budget bta3o?",
+   "expected_intent": "explain_entity",
+   "also_ok": [],
+   "expected_entities": [
+    {
+     "level": "adset",
+     "name": "Ramadan Cairo women 25-50"
+    }
+   ],
+   "selected": null,
+   "history": [
+    {
+     "role": "user",
+     "content": "Which audience is being scaled?"
+    },
+    {
+     "role": "assistant",
+     "content": "Ramadan Cairo women 25-50 is the scaled audience."
+    }
+   ],
+   "language": "franco",
+   "note": ""
+  }
+ ]
+}

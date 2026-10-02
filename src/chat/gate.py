@@ -1,0 +1,279 @@
+"""
+Step 2: the gate. Decides WHAT KIND of question this is before anything is
+answered, so "answer only when you can" is enforced by code, not by hoping
+the answer prompt behaves.
+
+Contract (the "socket"): every gate returns a GateResult with the same
+fields. LLMGate and KeywordGate are interchangeable; a third classifier
+(e.g. Jev by TypeSafe AI) only has to return the same shape.
+
+    intent               one of INTENTS
+    confidence           0..1 (self-reported for the LLM: NOT calibrated
+                         until scripts/eval_gate.py shows it is)
+    entity_ids           ids from the current run the question is about
+    standalone_question  the question rewritten to stand alone
+                         ("why that one?" -> "Why was <ad> killed?")
+    language             en | ar | franco
+
+route() turns a GateResult into what the chatbot does next.
+"""
+
+import json
+import re
+from dataclasses import dataclass, field, asdict
+
+from ..config import load_config
+from .entities import EntityIndex
+from .llm import chat_json, get_client
+
+_cfg = load_config()["chat"]
+
+INTENTS = {
+    "explain_entity": "about one or a few specific campaigns/adsets/ads: why a decision, its numbers, its test, its money",
+    "compare_or_list": "across many entities: lists, rankings, totals, counts, comparisons, 'which ... best/worst'",
+    "method": "how the system works: definitions, terms, how a number is calculated, what the system cannot know",
+    "conversation_text": "what customers said, asked, complained about, why they ghosted/refunded -- needs reading chat messages",
+    "new_decision": "asks for a decision the system did not make: budget amounts, what-ifs, predictions, new campaigns, overriding or changing a stored decision, the bot's own opinion",
+    "out_of_scope": "nothing to do with this merchant's ads, scores or decisions",
+    "unclear": "cannot tell what is being asked, or which entity, even with the history",
+}
+
+
+@dataclass
+class GateResult:
+    intent: str
+    confidence: float
+    entity_ids: list[str] = field(default_factory=list)
+    standalone_question: str = ""
+    language: str = "en"
+    source: str = ""           # llm:<model> | keyword | fallback:<why>
+    meta: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+# ---------------------------------------------------------------------------
+# LLM gate
+# ---------------------------------------------------------------------------
+
+SYSTEM = """You are the routing step of a chatbot for a food merchant's ad decision system.
+You do NOT answer the question. You only classify it and return JSON.
+
+The system has ALREADY made a stored decision (scale / hold / kill, budget share, test plan)
+for every campaign, adset (= audience) and ad (= creative) listed below. The chatbot can only
+EXPLAIN those stored decisions and the data behind them. It never makes a new decision.
+
+Intents:
+{intents}
+
+Rules:
+- "What does the system recommend for X?" or "why is X on hold?" = explain_entity, NOT new_decision.
+- "Should I double / raise / cut X's budget?", "what if I ...", "will sales go up", "predict",
+  "make a new campaign", "change X to scale", "what would YOU do" = new_decision.
+- Questions about the meaning of a term in general = method. About that term FOR a specific
+  entity (its interval, its fatigue) = explain_entity.
+- If the user has selected an entity and says "this / it / here", the question is about it.
+- Use the chat history to resolve "that one", "the other", "and its spend?".
+- entity_ids: copy exact ids from the list. Empty if none. Several if comparing.
+- If a reference matches several entities and nothing narrows it down, intent = unclear.
+- standalone_question: rewrite the question in English so it makes sense with no history,
+  using entity NAMES. Keep the user's meaning; do not add anything.
+- language: "en", "ar" (Arabic script) or "franco" (Arabic in Latin letters/numbers).
+- confidence: your probability (0..1) that the intent is right.
+
+Entities (id | level | name | detail):
+{entities}
+
+Return ONLY: {{"intent": "...", "confidence": 0.0, "entity_ids": [], "standalone_question": "...", "language": "en"}}"""
+
+
+def _user_message(question, selected, history, candidates):
+    parts = []
+    if selected:
+        parts.append(f"Selected entity: {selected.id} | {selected.level} | {selected.name}")
+    else:
+        parts.append("Selected entity: none")
+    if history:
+        parts.append("Chat history (oldest first):\n" + "\n".join(
+            f"{h['role']}: {h['content'][:300]}" for h in history[-_cfg['history_turns']:]))
+    if candidates:
+        parts.append("Name matches found by code (may be wrong or incomplete): " + "; ".join(
+            f"{c.id} {c.name} ({c.level}, {c.score})" for c in candidates))
+    parts.append(f"Question: {question}")
+    return "\n\n".join(parts)
+
+
+class LLMGate:
+    def __init__(self, index: EntityIndex, client=None, model: str | None = None):
+        self.index = index
+        self.client = client if client is not None else get_client()
+        self.model = model or _cfg["gate_model"]
+        self.system = SYSTEM.format(
+            intents="\n".join(f"- {k}: {v}" for k, v in INTENTS.items()),
+            entities=index.compact_list())
+
+    def classify(self, question, selected_id=None, history=None) -> GateResult:
+        selected = self.index.by_id.get(selected_id) if selected_id else None
+        candidates = self.index.match(question)
+        if self.client is None:
+            return _fallback("no_key", question, selected_id)
+        data, meta = chat_json(self.client, self.model, self.system,
+                               _user_message(question, selected, history or [], candidates))
+        if data is None:
+            r = _fallback("llm_error", question, selected_id)
+            r.meta = meta
+            return r
+        return _validate(data, self.index, f"llm:{self.model}", meta, question)
+
+
+def _validate(data: dict, index: EntityIndex, source: str, meta: dict, question: str) -> GateResult:
+    """Never trust the shape of an LLM reply: unknown intent -> unclear,
+    unknown ids dropped, confidence clamped."""
+    intent = data.get("intent") if data.get("intent") in INTENTS else "unclear"
+    try:
+        conf = max(0.0, min(1.0, float(data.get("confidence", 0))))
+    except (TypeError, ValueError):
+        conf = 0.0
+    ids = [i for i in (data.get("entity_ids") or []) if isinstance(i, str) and i in index.by_id]
+    dropped = [i for i in (data.get("entity_ids") or []) if i not in ids]
+    if dropped:
+        meta = {**meta, "dropped_ids": dropped}
+    lang = data.get("language") if data.get("language") in ("en", "ar", "franco") else "en"
+    return GateResult(intent, conf, ids, str(data.get("standalone_question") or question),
+                      lang, source, meta)
+
+
+def _fallback(reason, question, selected_id):
+    return GateResult("unclear", 0.0, [selected_id] if selected_id else [], question,
+                      _detect_language(question), f"fallback:{reason}")
+
+
+# ---------------------------------------------------------------------------
+# Keyword gate -- the floor any classifier has to beat
+# ---------------------------------------------------------------------------
+
+KEYWORDS = {
+    "new_decision": [
+        r"\bshould i\b", r"\bshall i\b", r"\bdouble\b", r"\b(raise|increase|cut|reduce|lower)\b.*\bbudget\b",
+        r"\bwhat if\b", r"\bwill (it|sales|they)\b", r"\bpredict", r"\bforecast", r"\bhow much should\b",
+        r"\bcreate (a )?new\b", r"\bchange\b.*\bto (scale|kill|hold)\b", r"\bwould you\b", r"\bignore the system\b",
+        r"\bif i (kill|scale|raise|stop|pause)\b",
+        r"ازود", r"أزود", r"لو زودت", r"اعمل ايه", r"المفروض", r"هل لازم", r"توقع",
+        r"\bzawed", r"\blw zawedt", r"\ba3mel eh\b",
+    ],
+    "conversation_text": [
+        r"\bcomplain", r"\bcustomers? (say|said|ask|asked|want)", r"\bpeople ask", r"\bwhy do (people|customers)\b",
+        r"\bghost", r"\bchats?\b", r"\bmessages?\b", r"\brefund reason", r"\bask(ed)? for a refund",
+        r"العملاء بيقولوا", r"بيشتكوا", r"بيسألوا", r"العملاء بيسألوا", r"\b3omala\b",
+    ],
+    "method": [
+        r"\bwhat (is|does|are) (a |an |the )?(score|p_better|interval|explore|exploit|fatigue|baseline|70/30|calibrat)",
+        r"\bhow (do|does) (you|the system|it) (calculate|compute|decide|work)", r"\bwhat does .* mean\b",
+        r"\bdefine\b", r"\bcalibrated\b", r"\bnot know\b", r"\bhow is .* calculated\b", r"\bwhy do you use\b",
+        r"يعني ايه", r"معنى", r"ازاي بتحسب", r"بتحسب", r"\bezay\b.*\b(bne7seb|bt7seb)\b", r"\bya3ni eh\b",
+    ],
+    "compare_or_list": [
+        r"\bwhich\b", r"\btop\b", r"\bbest\b", r"\bworst\b", r"\blist\b", r"\btotal\b", r"\bcompare\b",
+        r"\bhow many\b", r"\brank", r"\ball (the )?(ads|campaigns|audiences|tests)\b", r"\bvs\.?\b",
+        r"انهي", r"أنهي", r"اكتر", r"أكتر", r"افضل", r"أفضل", r"كام", r"مجموع", r"\bkam\b", r"\banhy\b",
+    ],
+}
+
+
+class KeywordGate:
+    """Regex rules + the entity matcher. No LLM, no network. It exists so the
+    LLM gate has a number to beat (the project's 'floor before fancy')."""
+
+    def __init__(self, index: EntityIndex):
+        self.index = index
+
+    def classify(self, question, selected_id=None, history=None) -> GateResult:
+        q = question.lower()
+        candidates = self.index.match(question)
+        ids = [c.id for c in candidates if c.score >= 0.9] or ([candidates[0].id] if candidates else [])
+        if selected_id and not ids:
+            ids = [selected_id]
+        hits = {k: sum(bool(re.search(p, q)) for p in pats) for k, pats in KEYWORDS.items()}
+        best = max(hits, key=hits.get)
+        # Fixed confidences: the keyword gate has no real confidence signal,
+        # so these only keep it above min_confidence and let it be judged on
+        # intent alone.
+        if hits[best] > 0:
+            intent, conf = best, 0.7
+        elif ids:
+            intent, conf = "explain_entity", 0.65
+        elif len(q.split()) <= 2:
+            intent, conf = "unclear", 0.65
+        else:
+            intent, conf = "out_of_scope", 0.65
+        return GateResult(intent, conf, ids, question, _detect_language(question), "keyword")
+
+
+def _detect_language(text: str) -> str:
+    if re.search(r"[؀-ۿ]", text):
+        return "ar"
+    if re.search(r"\b[a-z]*[2375][a-z]+\b", text.lower()) or re.search(
+            r"\b(eh|ezay|leh|bta3|3ayez|3ndna|mesh|ma3a|kam|lw)\b", text.lower()):
+        return "franco"
+    return "en"
+
+
+# ---------------------------------------------------------------------------
+# Routing policy
+# ---------------------------------------------------------------------------
+
+REPLIES = {
+    "refuse_decision": {
+        "en": "I can only explain the decisions the system already made, not make new ones. "
+              "Here is what the system currently recommends:",
+        "ar": "أنا بشرح القرارات اللي السيستم خدها بس، مش باخد قرارات جديدة. ده اللي السيستم موصي بيه دلوقتي:",
+        "franco": "Ana bashra7 el qararat elly el system khadha bas, mesh bakhod qararat gdeda. "
+                  "Da elly el system mewasy beeh delwa2ty:",
+    },
+    "refuse_scope": {
+        "en": "That is outside what I can answer. I can explain your campaigns, audiences, ads, "
+              "their numbers and the system's decisions.",
+        "ar": "ده بره اللي أقدر أجاوب عليه. أقدر أشرح الحملات والجماهير والإعلانات وأرقامها وقرارات السيستم.",
+        "franco": "Da barra elly a2dar agaweb 3aleh. A2dar ashra7 el campaigns wel audiences wel ads "
+                  "w ar2amha w qararat el system.",
+    },
+    "not_yet": {
+        "en": "I can't read the conversation text yet, so I can't answer questions about what customers "
+              "said. That is coming with the conversation-insights feature.",
+        "ar": "لسه مش بقدر أقرا نص المحادثات، فمش هقدر أجاوب على اللي العملاء قالوه. ده جاي مع خاصية تحليل المحادثات.",
+        "franco": "Lessa mesh ba2dar a2ra el mo7adsat, fa mesh ha2dar agaweb 3ala elly el 3omala 2aloh. "
+                  "Da gay ma3 feature tahlil el mo7adsat.",
+    },
+    "clarify": {
+        "en": "I'm not sure what you mean. Which campaign, audience or ad are you asking about, "
+              "and what would you like to know?",
+        "ar": "مش متأكد قصدك ايه. بتسأل عن انهي حملة أو جمهور أو إعلان، وعايز تعرف ايه؟",
+        "franco": "Mesh met2aked 2asdak eh. Bet2sal 3an anhy campaign aw audience aw ad, w 3ayez te3raf eh?",
+    },
+}
+
+
+@dataclass
+class Route:
+    action: str          # answer | refuse_decision | refuse_scope | not_yet | clarify
+    reply: str | None    # fixed reply for every action except "answer"
+    show_stored_decision_for: list[str] = field(default_factory=list)
+
+
+def route(g: GateResult, selected_id: str | None = None,
+          min_confidence: float = _cfg["min_confidence"]) -> Route:
+    lang = g.language
+    ids = g.entity_ids or ([selected_id] if selected_id else [])
+    if g.intent == "new_decision":
+        # Refusing is not the end: point to what the system DID decide.
+        return Route("refuse_decision", REPLIES["refuse_decision"][lang], ids)
+    if g.intent == "out_of_scope" and g.confidence >= min_confidence:
+        return Route("refuse_scope", REPLIES["refuse_scope"][lang])
+    if g.intent == "conversation_text":
+        return Route("not_yet", REPLIES["not_yet"][lang])
+    if g.intent == "unclear" or g.confidence < min_confidence:
+        return Route("clarify", REPLIES["clarify"][lang])
+    if g.intent == "explain_entity" and not ids:
+        return Route("clarify", REPLIES["clarify"][lang])
+    return Route("answer", None)
