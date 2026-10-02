@@ -1241,6 +1241,50 @@
    ],
    "language": "franco",
    "note": ""
+  },
+  {
+   "id": "q079",
+   "split": "dev",
+   "question": "what is the decision should be taken",
+   "expected_intent": "explain_entity",
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Always-On Premium Acquisition"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Always-On Premium Acquisition"
+   },
+   "language": "en",
+   "also_ok": [
+    "new_decision"
+   ],
+   "history": [],
+   "note": "added after playground bug: asks for the STORED decision"
+  },
+  {
+   "id": "q080",
+   "split": "dev",
+   "question": "اعمل ايه في الحملة دي؟",
+   "expected_intent": "explain_entity",
+   "expected_entities": [
+    {
+     "level": "campaign",
+     "name": "Ramadan Suhoor Specials"
+    }
+   ],
+   "selected": {
+    "level": "campaign",
+    "name": "Ramadan Suhoor Specials"
+   },
+   "language": "ar",
+   "also_ok": [
+    "new_decision"
+   ],
+   "history": [],
+   "note": "added after playground bug: asks for the STORED decision"
   }
  ]
 }
