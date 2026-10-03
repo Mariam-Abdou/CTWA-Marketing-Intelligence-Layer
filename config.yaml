@@ -148,3 +148,18 @@ chat:
   min_confidence: 0.6
   history_turns: 4
   max_tool_calls: 3
+  # Per request. A failed call now fails in seconds and the bot falls back,
+  # instead of the SDK default of 600 s + 2 retries.
+  timeout_seconds: 20
+  # 0: never let the SDK sleep on a 429 (Groq's retry-after can be a minute).
+  # The bot tells the user how long to wait instead.
+  max_retries: 0
+  # Provider limit PER MODEL (Groq free tier: 8,000 tokens/minute each). The
+  # bot keeps a running count per model and answers "busy, try again in N s"
+  # BEFORE calling, instead of failing halfway through a question.
+  tokens_per_minute: 8000
+  # Typical cost of one question on each model, used for that pre-check.
+  estimated_gate_tokens: 2100
+  estimated_answer_tokens: 3500
+  # Every question, route, tools, guard result and reply -- for review and eval.
+  log_path: "outputs/chat_log.db"

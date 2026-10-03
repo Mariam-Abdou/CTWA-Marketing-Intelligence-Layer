@@ -57,7 +57,9 @@ _DROP_KEYS = {"facts_given", "hypothesis_prompt", "rule_based_hypothesis", "min_
 
 def _compact(v):
     if isinstance(v, float):
-        return float(f"{v:.4g}")
+        # rates/probabilities: 4 significant digits; money and counts: 2 decimals
+        # (4 sig. digits turned a spend of 140,812 into 140,800)
+        return round(v, 2) if abs(v) >= 100 else float(f"{v:.4g}")
     if isinstance(v, dict):
         return {k: _compact(x) for k, x in v.items()
                 if k not in _DROP_KEYS and x is not None and x != {} and x != []}
@@ -95,6 +97,7 @@ def entity_context(entity_id: str, db_path: str = DB) -> dict | None:
         "decision": {k: d[k] for k in ("action", "raw_action", "bucket", "budget_share", "held_back_by",
                                        "score", "interval_low", "interval_high", "explore_outcome",
                                        "hypothesis", "stop_rule", "reasoning")},
+        "decision_path": decision_path(d),
         "why": json.loads(d["why_json"] or "[]"),
         "findings": [f["finding"] for f in json.loads(d["findings_json"] or "[]")],
         "parent": parent[0] if parent else None,
@@ -129,8 +132,58 @@ def _step_view(s) -> dict:
         inputs["prior_strength_source"] = fit.get("source")
     if s["step_key"] == "test_plan" and not s["applied"]:
         return out
+    if s["step_key"] in ("fatigue_guardrail", "cpa_guardrail") and not s["applied"]:
+        # The numbers are computed for every id, but the guardrail only RUNS
+        # when the raw action is scale. Showing "fatigued: true" here made the
+        # model say the item was "flagged as fatigued" -- it was never checked.
+        out["note"] = "NOT CHECKED: this guardrail only runs when the raw action is scale"
+        return out
     out["in"], out["out"] = inputs, outputs
     return out
+
+
+def _pct(x):
+    return f"{x * 100:.1f}%" if isinstance(x, (int, float)) else "n/a"
+
+
+def decision_path(d: dict) -> list[str]:
+    """The decision as an ordered chain of plain sentences, written by code
+    from the stored row -- so the model cannot reorder the logic."""
+    path = [f"Evidence: {d['successes']} sales out of {d['successes'] + d['failures']} resolved conversations"
+            f" ({d['excluded']} excluded, outcome not known yet)."]
+    if d["score"] is None:
+        path.append("No resolved conversations: no score, so no decision from the numbers.")
+    else:
+        path.append(f"Score {_pct(d['score'])} (90% interval {_pct(d['interval_low'])} to "
+                    f"{_pct(d['interval_high'])}) compared with a baseline of {_pct(d['baseline'])} "
+                    f"({d['baseline_source']}).")
+        path.append(f"P(better than baseline) = {_pct(d['p_better'])}, P(worse) = {_pct(d['p_worse'])}; "
+                    f"the bar to act is 75.0% -> the numbers alone say {d['raw_action'].upper()}.")
+    if d.get("spend") is not None:
+        money = (f"Money (context, not part of the score): spend {d['spend']:,.0f} EGP, revenue "
+                 f"{(d.get('revenue') or 0):,.0f} EGP, {d.get('sales') or 0} sales")
+        if d.get("cost_per_sale") is not None:
+            money += f", cost per sale {d['cost_per_sale']:,.0f} EGP"
+        if d.get("baseline_cost_per_sale") is not None:
+            money += f" (level baseline {d['baseline_cost_per_sale']:,.0f} EGP)"
+        path.append(money + ".")
+    if d["raw_action"] == "scale":
+        if d["fatigued"]:
+            path.append("Fatigue guardrail checked and FIRED (frequency high and CTR fell): scale became hold.")
+        elif d["underperforming"]:
+            path.append("Cost-per-sale guardrail checked and FIRED: scale became hold.")
+        else:
+            path.append("Guardrails (fatigue, cost per sale) checked and passed.")
+    else:
+        path.append("Guardrails (fatigue, cost per sale) were NOT checked: they only run when the numbers say "
+                    "scale, so frequency, CTR and cost per sale did not affect this decision.")
+    path.append(f"Final action: {d['action'].upper()}.")
+    bucket = {"exploit": f"gets {_pct(d['budget_share'])} of the next budget (exploit pool)",
+              "explore": f"funded as a test with {_pct(d['budget_share'])} of the next budget",
+              "kill": "no budget", "none": "no budget change"}[d["bucket"]]
+    extra = f" ({d['explore_outcome']})" if d.get("explore_outcome") and d["bucket"] == "none" else ""
+    path.append(f"Budget: {bucket}{extra}.")
+    return path
 
 
 # ---------------------------------------------------------------------------

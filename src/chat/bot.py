@@ -17,9 +17,11 @@ import time
 from dataclasses import dataclass, field
 
 from ..config import load_config
+from . import log as chat_log
 from .answer import answer as write_answer
+from .budget import BUDGETS
 from .entities import EntityIndex
-from .gate import KeywordGate, LLMGate, route
+from .gate import REPLIES, KeywordGate, LLMGate, _detect_language, route
 from .guard import check
 from .llm import get_client
 from .store import decision_summary, stored_decisions
@@ -46,6 +48,9 @@ class Reply:
     fallback: str | None = None          # why a deterministic reply was used
     stored: list = field(default_factory=list)
     latency_ms: int = 0
+    options: list = field(default_factory=list)     # clarify: [{id, name, level}]
+    retry_after: float | None = None                # busy: seconds to wait
+    log_id: int | None = None
 
 
 def _deterministic(ids, lang):
@@ -62,16 +67,47 @@ def _deterministic(ids, lang):
 
 
 class ChatBot:
-    def __init__(self, db_path: str | None = None, client=None):
+    def __init__(self, db_path: str | None = None, client=None, log_path: str | None = None):
+        self.log_path = log_path
         self.index = EntityIndex.from_db(db_path or _cfg["db_path"])
         self.client = client if client is not None else get_client()
         self.keyword_gate = KeywordGate(self.index)
         self.gate = LLMGate(self.index, client=self.client) if self.client else self.keyword_gate
 
-    def ask(self, question: str, selected_id: str | None = None, history: list | None = None) -> Reply:
+    def ask(self, question: str, selected_id: str | None = None, history: list | None = None,
+            session_id: str | None = None, page: str | None = None) -> Reply:
+        reply = self._ask(question, selected_id, history or [])
+        reply.log_id = chat_log.write(reply, question=question, session_id=session_id, page=page,
+                                      selected_id=selected_id, history_turns=len(history or []) // 2,
+                                      path=self.log_path)
+        return reply
+
+    def _busy(self, start, question, selected_id, seconds, gate=None, why="pre-check"):
+        lang = (gate or {}).get("language") or _detect_language(question)
+        secs = max(1, int(round(seconds)))
+        text = REPLIES["busy"][lang].format(s=secs)
+        ids = (gate or {}).get("entity_ids") or ([selected_id] if selected_id else [])
+        stored = stored_decisions(ids)
+        if stored:   # still useful while waiting: the stored decision, written by code
+            text += "\n" + "\n".join("• " + decision_summary(d) for d in stored)
+        r = Reply(text, "busy", gate or {"intent": None, "confidence": None, "entity_ids": ids,
+                                         "standalone_question": question, "language": lang,
+                                         "source": f"busy:{why}", "meta": {}},
+                  stored=stored, retry_after=secs, fallback=f"rate_limit:{why}")
+        r.latency_ms = round((time.monotonic() - start) * 1000)
+        return r
+
+    def _ask(self, question, selected_id, history) -> Reply:
         start = time.monotonic()
-        history = history or []
+        if self.client is not None:
+            # Will this question fit in the provider's per-minute limit?
+            wait = max(BUDGETS[_cfg["gate_model"]].wait_seconds(_cfg.get("estimated_gate_tokens", 2100)),
+                       BUDGETS[_cfg["answer_model"]].wait_seconds(_cfg.get("estimated_answer_tokens", 3500)))
+            if wait > 0:
+                return self._busy(start, question, selected_id, wait)
         g = self.gate.classify(question, selected_id, history)
+        if g.meta.get("rate_limited"):
+            return self._busy(start, question, selected_id, g.meta.get("retry_after", 30), why="gate_429")
         if g.source.startswith("fallback:llm_error"):
             # LLM unreachable: degrade to the keyword gate instead of asking
             # every question to be clarified. Still safe -- if the answer step
@@ -81,6 +117,8 @@ class ChatBot:
             g.source, g.meta = "keyword (llm gate failed)", err
         r = route(g, selected_id)
         reply = Reply("", r.action, g.to_dict())
+        reply.options = [{"id": i, "name": self.index.by_id[i].name, "level": self.index.by_id[i].level}
+                         for i in r.options if i in self.index.by_id]
 
         if r.action != "answer":
             reply.text = r.reply
@@ -98,6 +136,11 @@ class ChatBot:
         sel = self.index.by_id.get(selected_id)
         sel_name = f"{sel.name} ({sel.level})" if sel else None
         a = write_answer(self.client, question, g, history, sel_name)
+        if a.meta.get("rate_limited"):
+            busy = self._busy(start, question, selected_id, a.meta.get("retry_after", 30),
+                              gate=g.to_dict(), why="answer_429")
+            busy.answer_meta, busy.facts = a.meta, a.facts
+            return busy
         guard = check(a.text, a.facts, question)
         reply.answer_meta, reply.facts = a.meta, a.facts
 
