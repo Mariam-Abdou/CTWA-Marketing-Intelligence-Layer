@@ -28,7 +28,7 @@ ALL_LEVEL_WORDS = set().union(*LEVEL_WORDS.values())
 # Same thing spelled two ways in names vs how people type them.
 ALIASES = {"lal": "lookalike", "lookalikes": "lookalike", "alexandria": "alex",
            "iftaar": "iftar", "suhour": "suhoor", "sohoor": "suhoor"}
-MIN_SCORE = 0.5
+MIN_SCORE = 0.4
 MIN_SCORE_WITH_LEVEL = 0.35
 
 

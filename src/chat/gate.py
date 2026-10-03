@@ -134,6 +134,7 @@ class LLMGate:
             r.meta = meta
             return r
         r = _validate(data, self.index, f"llm:{self.model}", meta, question)
+        r.meta["candidates"] = [c.id for c in candidates]
         # The selection is a fact, not a guess: if the model named no entity,
         # an entity-level question is about the one the user has open.
         if selected_id and not r.entity_ids and r.intent in ENTITY_INTENTS:
@@ -206,7 +207,9 @@ class KeywordGate:
     def classify(self, question, selected_id=None, history=None) -> GateResult:
         q = question.lower()
         candidates = self.index.match(question)
-        ids = [c.id for c in candidates if c.score >= 0.9] or ([candidates[0].id] if candidates else [])
+        # Its own pick needs a confident match; weaker ones only become clarify options.
+        ids = [c.id for c in candidates if c.score >= 0.9] or (
+            [candidates[0].id] if candidates and candidates[0].score >= 0.5 else [])
         if selected_id and not ids:
             ids = [selected_id]
         hits = {k: sum(bool(re.search(p, q)) for p in pats) for k, pats in KEYWORDS.items()}
@@ -222,7 +225,8 @@ class KeywordGate:
             intent, conf = "unclear", 0.65
         else:
             intent, conf = "out_of_scope", 0.65
-        return GateResult(intent, conf, ids, question, _detect_language(question), "keyword")
+        return GateResult(intent, conf, ids, question, _detect_language(question), "keyword",
+                          {"candidates": [c.id for c in candidates]})
 
 
 def _detect_language(text: str) -> str:
@@ -260,6 +264,16 @@ REPLIES = {
         "franco": "Lessa mesh ba2dar a2ra el mo7adsat, fa mesh ha2dar agaweb 3ala elly el 3omala 2aloh. "
                   "Da gay ma3 feature tahlil el mo7adsat.",
     },
+    "clarify_options": {
+        "en": "Which one do you mean?",
+        "ar": "تقصد انهي واحد؟",
+        "franco": "2asdak anhy wa7ed?",
+    },
+    "busy": {
+        "en": "I'm at my usage limit right now. Please ask again in about {s} seconds.",
+        "ar": "وصلت للحد المسموح دلوقتي. اسأل تاني بعد حوالي {s} ثانية.",
+        "franco": "Wasalt lel limit delwa2ty. Es2al tany ba3d 7awaly {s} sanya.",
+    },
     "clarify": {
         "en": "I'm not sure what you mean. Which campaign, audience or ad are you asking about, "
               "and what would you like to know?",
@@ -271,9 +285,23 @@ REPLIES = {
 
 @dataclass
 class Route:
-    action: str          # answer | refuse_decision | refuse_scope | not_yet | clarify
+    action: str          # answer | refuse_decision | refuse_scope | not_yet | clarify | busy
     reply: str | None    # fixed reply for every action except "answer"
     show_stored_decision_for: list[str] = field(default_factory=list)
+    options: list[str] = field(default_factory=list)   # clarify: entity ids to pick from
+
+
+MAX_OPTIONS = 4
+
+
+def _clarify(g: GateResult, lang: str) -> Route:
+    """Ask back with concrete choices when we have any: the entities the gate
+    hesitated between, else the matcher's candidates."""
+    opts = g.entity_ids if len(g.entity_ids) > 1 else g.meta.get("candidates", [])
+    opts = list(dict.fromkeys(opts))[:MAX_OPTIONS]
+    if opts:
+        return Route("clarify", REPLIES["clarify_options"][lang], options=opts)
+    return Route("clarify", REPLIES["clarify"][lang])
 
 
 def route(g: GateResult, selected_id: str | None = None,
@@ -288,7 +316,7 @@ def route(g: GateResult, selected_id: str | None = None,
     if g.intent == "conversation_text":
         return Route("not_yet", REPLIES["not_yet"][lang])
     if g.intent == "unclear" or g.confidence < min_confidence:
-        return Route("clarify", REPLIES["clarify"][lang])
+        return _clarify(g, lang)
     if g.intent == "explain_entity" and not ids:
-        return Route("clarify", REPLIES["clarify"][lang])
+        return _clarify(g, lang)
     return Route("answer", None)

@@ -19,7 +19,9 @@ import time
 from dataclasses import dataclass, field
 
 from ..config import load_config
+from .budget import BUDGETS
 from .glossary import glossary
+from .llm import is_rate_limit, retry_after
 from .store import entity_context, run_sql, sql_schema
 
 _cfg = load_config()["chat"]
@@ -36,11 +38,16 @@ answer, say plainly that you don't have that information. Never guess or fill ga
 2. Never make, change or suggest a decision. Do not say what the owner should do beyond the stored \
 action. No "I recommend", no "you should increase/cut/pause". The stored action is final.
 3. Never predict future results ("will increase sales", "should improve").
-4. Numbers: copy them from the facts. You may show a fraction as a percent (0.7 -> 70%) and round \
-(money to whole EGP, rates to whole %). Never compute new numbers (no sums, differences or ratios) \
--- if a total is needed, get it with run_sql.
+4. Numbers: copy them from the facts. You may show a fraction as a percent (0.7 -> 70%). Round money \
+to whole EGP. Keep ONE decimal for probabilities and rates (74.6%, not 75%) -- rounding must never \
+make a value look like it crossed a threshold. Never compute new numbers (no sums, differences or \
+ratios) -- if a total is needed, get it with run_sql.
 5. When you state a score or rate, also say how much evidence is behind it (number of conversations \
 or the interval).
+6b. To explain WHY an entity got its decision, follow its "decision_path" in order. When it says the \
+guardrails were NOT checked, say exactly that -- do not say the item is fatigued, flagged, above or \
+below a stop line, or that something was "ignored". Do not compare cost per sale with any line yourself.
+6c. Show scores, rates and probabilities as percents with one decimal (55.4%), never as 0.554.
 6. After each claim, cite where it came from in square brackets: [step 6 fatigue guardrail], \
 [decision], [why], [run_sql], [glossary]. Keep citations short.
 7. Plain shop language; explain a technical term in a few words the first time.
@@ -154,11 +161,13 @@ def answer(client, question, gate, history=None, selected_name=None, model=None,
             if getattr(resp, "usage", None):
                 meta["input_tokens"] += resp.usage.prompt_tokens or 0
                 meta["output_tokens"] += resp.usage.completion_tokens or 0
+                BUDGETS[model].record((resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0))
             msg = resp.choices[0].message
             tool_calls = getattr(msg, "tool_calls", None) or []
             if not tool_calls or not allow_tools:
                 meta["latency_ms"] = round((time.monotonic() - start) * 1000)
-                return AnswerResult((msg.content or "").strip(), facts, calls, meta)
+                text = (msg.content or "").strip().replace("【", "[").replace("】", "]")
+                return AnswerResult(text, facts, calls, meta)
             msgs.append({"role": "assistant", "content": msg.content or "",
                          "tool_calls": [{"id": tc.id, "type": "function",
                                          "function": {"name": tc.function.name,
@@ -177,4 +186,8 @@ def answer(client, question, gate, history=None, selected_name=None, model=None,
     except Exception as exc:
         meta["latency_ms"] = round((time.monotonic() - start) * 1000)
         meta["error"] = f"{type(exc).__name__}: {exc}"[:300]
+        if is_rate_limit(exc):
+            meta["rate_limited"] = True
+            meta["retry_after"] = retry_after(exc)
+            BUDGETS[model].block_for(meta["retry_after"])
         return AnswerResult("", facts, calls, meta)

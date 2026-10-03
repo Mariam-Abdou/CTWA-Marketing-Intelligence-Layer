@@ -18,6 +18,11 @@ deterministic reply built from the stored decision (src/chat/bot.py).
 import re
 from dataclasses import dataclass, field
 
+from ..config import load_config
+
+# Decision bars a rounded number must never appear to cross (in percent).
+THRESHOLDS = [load_config()["decision"]["probability_threshold"] * 100]
+
 NUM = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?\s*(%)?")
 ACTION_WORDS = {
     "scale": r"\bscal(?:e|ed|ing)\b",
@@ -56,16 +61,21 @@ def _walk(x, out):
             _walk(v, out)
 
 
-def _grounded(value: float, decimals: int, is_pct: bool, known: set) -> bool:
+def _grounded(value: float, decimals: int, is_pct: bool, known: set):
+    """Returns (grounded, crossed): crossed = the only way this number matches
+    a fact is by rounding it over a decision bar (74.6% written as 75%)."""
+    crossed = None
     for k in known:
         cands = [k, k * 100] if (is_pct or k <= 1) else [k]
         for c in cands:
-            if abs(round(c, decimals) - value) < 1e-9 or abs(c - value) < 1e-9:
-                return True
-            # tolerate rounding to whole numbers / one decimal either way
-            if decimals == 0 and abs(c - value) <= 0.5:
-                return True
-    return False
+            if abs(c - value) < 1e-9:
+                return True, None
+            if abs(round(c, decimals) - value) < 1e-9 or (decimals == 0 and abs(c - value) <= 0.5):
+                if is_pct and any(min(c, value) < t <= max(c, value) for t in THRESHOLDS):
+                    crossed = c
+                    continue
+                return True, None
+    return (crossed is not None), crossed
 
 
 def check_numbers(text: str, facts: list, question: str = "") -> list:
@@ -82,7 +92,11 @@ def check_numbers(text: str, facts: list, question: str = "") -> list:
         value = float(raw + (f".{dec}" if dec else ""))
         if not dec and value in (0, 1) and not m.group(3):   # "one", "1 of", trivial
             continue
-        if not _grounded(value, len(dec), bool(m.group(3)), known):
+        ok, crossed = _grounded(value, len(dec), bool(m.group(3)), known)
+        if crossed is not None:
+            issues.append(f"{m.group(0).strip()} is {crossed:.1f}% rounded across the {THRESHOLDS[0]:.0f}% "
+                          f"decision bar -- write {crossed:.1f}%")
+        elif not ok:
             issues.append(f"number not in facts: {m.group(0).strip()}")
     return issues
 
@@ -125,6 +139,63 @@ def check_actions(text: str, facts: list) -> list:
     return list(dict.fromkeys(issues))
 
 
+GUARDRAIL_TALK = re.compile(r"stop line|fatigu|over the line|above the line|cost.per.sale guardrail|cpa guardrail",
+                            re.I)
+NOT_RUN = re.compile(r"not (?:been )?(?:checked|applied|run)|only runs?|did ?n[o']t run|wasn'?t checked|"
+                     r"were not checked|never checked|didn'?t apply|did not apply", re.I)
+
+
+VERDICT = re.compile(r"\b(?:above|over|exceed\w*|cross\w*|past|beyond)\b[^.]{0,25}\bline\b|\bfatigued\b|"
+                     r"\bflagged\b|\bignored\b|\bwould have\b[^.]{0,30}\b(?:fired|triggered|vetoed|stopped)", re.I)
+
+
+def check_guardrail_reasoning(text: str, facts: list) -> list:
+    """If an entity's guardrails did not run, a sentence that talks about
+    fatigue / the stop line must say they were not checked. Catches 'cost per
+    sale is above the stop line, but it was ignored' for a held item."""
+    issues = []
+    for f in facts:
+        r = f["result"]
+        if f["tool"] != "get_entity" or not isinstance(r, dict) or "decision_path" not in r:
+            continue
+        if not any("NOT checked" in line for line in r["decision_path"]):
+            continue
+        for s in re.split(r"(?<=[.!?؟\n])\s+", text):
+            # a verdict is wrong even if the sentence also says "not applied"
+            if VERDICT.search(s) or (GUARDRAIL_TALK.search(s) and not NOT_RUN.search(s)):
+                issues.append(f"talks about a guardrail that did not run for '{r['entity']['name']}': "
+                              f"'{s.strip()[:90]}'")
+    return list(dict.fromkeys(issues))
+
+
+PROB = re.compile(r"\b(better|worse)\b[^.\d%]{0,45}?(\d+(?:\.\d+)?)\s*%", re.I)
+
+
+def check_probabilities(text: str, facts: list) -> list:
+    """A percent written right after 'better'/'worse' must be THAT entity's
+    P(better)/P(worse) -- not the 75% bar, and not rounded over it.
+    Only checked when the answer is about one entity (unambiguous)."""
+    ents = [f["result"] for f in facts if f["tool"] == "get_entity"
+            and isinstance(f["result"], dict) and "steps" in f["result"]]
+    if len(ents) != 1:
+        return []
+    dec = next((s.get("out", {}) for s in ents[0]["steps"] if s.get("key") == "decision"), {})
+    actual = {"better": dec.get("p_better"), "worse": dec.get("p_worse")}
+    issues = []
+    for m in PROB.finditer(text):
+        which, num = m.group(1).lower(), m.group(2)
+        p = actual.get(which)
+        if p is None:
+            continue
+        x, d = float(num), len(num.split(".")[1]) if "." in num else 0
+        true_pct = p * 100
+        crosses = any(min(true_pct, x) < t <= max(true_pct, x) for t in THRESHOLDS)
+        if abs(round(true_pct, d) - x) > 1e-9 or crosses:
+            issues.append(f"P({which}) written as {num}% but it is {true_pct:.1f}%"
+                          + (f" (rounding crosses the {THRESHOLDS[0]:.0f}% bar)" if crosses else ""))
+    return issues
+
+
 def check_advice(text: str) -> list:
     return [f"new decision / prediction: '{m.group(0)}'"
             for p in ADVICE for m in [re.search(p, text, re.I)] if m]
@@ -133,5 +204,6 @@ def check_advice(text: str) -> list:
 def check(text: str, facts: list, question: str = "") -> GuardResult:
     if not text.strip():
         return GuardResult(False, ["empty answer"])
-    issues = check_numbers(text, facts, question) + check_actions(text, facts) + check_advice(text)
+    issues = (check_numbers(text, facts, question) + check_actions(text, facts) + check_advice(text)
+              + check_guardrail_reasoning(text, facts) + check_probabilities(text, facts))
     return GuardResult(not issues, issues)

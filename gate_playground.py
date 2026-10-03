@@ -90,6 +90,9 @@ def show_reply(rep, expected=None):
     st.markdown(f"{ROUTE_LABEL[rep.route]}  ·  {rep.latency_ms} ms")
     if rep.fallback:
         st.warning(FALLBACK_LABEL.get(rep.fallback, rep.fallback))
+    errors = [e for e in (rep.gate.get("meta", {}).get("error"), rep.answer_meta.get("error")) if e]
+    if errors:
+        st.error("LLM error: " + " | ".join(errors))
     st.markdown(rep.text)
     g = rep.gate
     ok = "" if expected is None else (" ✓" if g["intent"] in expected else " ✗")

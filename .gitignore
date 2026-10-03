@@ -8,3 +8,10 @@ _verify_app2.py
 
 # Personal notes, reasoning logs and findings (kept locally, not in the repo)
 notes/
+
+# Generated data -- contains customer names/phones (trace) and user questions (chat log)
+outputs/trace.db
+outputs/trace.db-journal
+outputs/chat_log.db
+outputs/chat_log.db-journal
+outputs/gate_eval_*.json
