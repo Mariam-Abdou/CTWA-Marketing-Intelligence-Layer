@@ -15,3 +15,5 @@ outputs/trace.db-journal
 outputs/chat_log.db
 outputs/chat_log.db-journal
 outputs/gate_eval_*.json
+data/
+outputs/
