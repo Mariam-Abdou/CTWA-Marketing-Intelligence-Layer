@@ -24,7 +24,8 @@ from datetime import datetime
 
 from src.config import load_config
 from src.chat.entities import EntityIndex
-from src.chat.gate import INTENTS, KeywordGate, LLMGate, route
+from src.chat.fallback import KeywordGate
+from src.chat.gate import INTENTS, LLMGate, route
 
 QUESTIONS = "data/chat_eval/gate_questions.json"
 ANSWERABLE = {"explain_entity", "compare_or_list", "method"}

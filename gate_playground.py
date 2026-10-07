@@ -14,7 +14,8 @@ import streamlit as st
 
 from src.config import load_config
 from src.chat.entities import EntityIndex
-from src.chat.gate import KeywordGate, LLMGate, route
+from src.chat.fallback import KeywordGate
+from src.chat.gate import LLMGate, route
 from src.chat.store import decision_summary, stored_decisions
 from src.chat.bot import ChatBot
 

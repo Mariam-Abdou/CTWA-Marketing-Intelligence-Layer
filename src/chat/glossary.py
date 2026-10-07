@@ -1,7 +1,6 @@
 """
-Every term the system uses, in merchant language, with the numbers read
-from config.yaml so the glossary can never drift from what the pipeline
-actually does. Served to the answer step through the glossary() tool.
+Every term the system uses, in merchant language, with the numbers read from config.yaml 
+so the glossary can never drift from what the pipeline actually does. 
 """
 
 import re

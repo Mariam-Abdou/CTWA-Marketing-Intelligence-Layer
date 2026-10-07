@@ -1,8 +1,7 @@
 """
 Step 1: find which campaign / adset / ad a question is about.
 
-Pure code, no LLM. Reads the current run's entities from trace.db and scores
-each against the question by:
+Reads the current run's entities from trace.db and scores each against the question by:
   - id: a full id, or a 4+ digit suffix ("ad 0005")
   - name: weighted token overlap, typo-tolerant, generic words count less
   - level words: "campaign", "audience"/"ad set", "creative"/"ad" break ties
@@ -25,7 +24,6 @@ LEVEL_WORDS = {
     "ad": {"ad", "ads", "creative", "creatives", "اعلان", "الاعلان", "إعلان", "الإعلان"},
 }
 ALL_LEVEL_WORDS = set().union(*LEVEL_WORDS.values())
-# Same thing spelled two ways in names vs how people type them.
 ALIASES = {"lal": "lookalike", "lookalikes": "lookalike", "alexandria": "alex",
            "iftaar": "iftar", "suhour": "suhoor", "sohoor": "suhoor"}
 MIN_SCORE = 0.4
@@ -65,7 +63,6 @@ class EntityIndex:
             for t in set(e.tokens):
                 df[t] = df.get(t, 0) + 1
         n = len(entities)
-        # rarer token = more distinctive ("suhoor" beats "creative")
         self.idf = {t: math.log((n + 1) / (c + 0.5)) for t, c in df.items()}
 
     @classmethod
@@ -104,8 +101,7 @@ class EntityIndex:
         for e in self.entities:
             if e.id in out:
                 continue
-            # "audience" inside a name must not count as matching the name when
-            # the user only said "audience" -- level words are scored separately.
+            # "audience" inside a name must not count as matching the name when the user only said "audience"
             toks = [t for t in e.tokens if t not in ALL_LEVEL_WORDS] or e.tokens
             weights = [self.idf.get(t, 1.0) for t in toks]
             total = sum(weights)
@@ -126,7 +122,7 @@ class EntityIndex:
         return len(candidates) > 1 and candidates[0].score - candidates[1].score < margin
 
     def compact_list(self) -> str:
-        """All entities in a few tokens each -- what the gate sees."""
+        """All entities, each in a few tokens"""
         order = {"campaign": 0, "adset": 1, "ad": 2}
         return "\n".join(f"{e.id} | {e.level} | {e.name} | {e.detail}"
                          for e in sorted(self.entities, key=lambda e: (order[e.level], e.name)))

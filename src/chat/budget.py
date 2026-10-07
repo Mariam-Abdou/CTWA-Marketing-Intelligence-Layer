@@ -1,9 +1,9 @@
 """
-Tokens-per-minute bookkeeping for the chat, shared by every session in this
-process (Streamlit runs all sessions in one process). Groq's free tier allows
-8,000 tokens/minute per model; a question costs ~2,000 on the gate model and
-~3,500 on the answer model. Knowing that BEFORE calling
-lets the bot say "busy, try again in 20 s" instead of failing mid-answer.
+Tokens-per-minute bookkeeping for the chat. 
+Groq's free tier allows 8,000 tokens/minute per model.
+A question costs ~2,000 on the gate model and ~3,500 on the answer model.
+Knowing that BEFORE calling the LLM, preventing bot failing mid-sentence,
+responding with "busy, try again in 20 s".
 """
 
 import threading
