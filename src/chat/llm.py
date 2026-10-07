@@ -1,6 +1,3 @@
-"""Thin JSON-mode client for the chat. Same key and endpoint as the
-pipeline's reasoning layer (config.yaml: reasoning.base_url / api_key_env)."""
-
 import json
 import os
 import re
@@ -16,9 +13,7 @@ _cfg = load_config()
 
 
 def get_client():
-    """Short timeout, one retry: a chat cannot wait minutes. The OpenAI SDK
-    default (600 s timeout, 2 retries, honouring long retry-after on 429)
-    made one failed question take 3 minutes."""
+    """Short timeout, one retry."""
     load_dotenv()
     key = os.environ.get(_cfg["reasoning"]["api_key_env"])
     if not key:

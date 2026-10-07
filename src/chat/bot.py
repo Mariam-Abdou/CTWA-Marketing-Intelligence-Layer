@@ -21,20 +21,13 @@ from . import log as chat_log
 from .answer import answer as write_answer
 from .budget import BUDGETS
 from .entities import EntityIndex
-from .gate import REPLIES, KeywordGate, LLMGate, _detect_language, route
+from .fallback import KeywordGate, deterministic_reply
+from .gate import REPLIES, LLMGate, _detect_language, route
 from .guard import check
 from .llm import get_client
 from .store import decision_summary, stored_decisions
 
 _cfg = load_config()["chat"]
-
-NO_ANSWER = {
-    "en": "I couldn't produce an answer I can verify from the stored data. Try asking about a specific "
-          "campaign, audience or ad.",
-    "ar": "مقدرتش أطلع إجابة أقدر أتأكد منها من البيانات المحفوظة. جرب تسأل عن حملة أو جمهور أو إعلان معين.",
-    "franco": "Ma2dertsh atala3 egaba a2dar at2aked menha men el data. Garrab tes2al 3an campaign aw "
-              "audience aw ad mo3ayan.",
-}
 
 
 @dataclass
@@ -51,19 +44,6 @@ class Reply:
     options: list = field(default_factory=list)     # clarify: [{id, name, level}]
     retry_after: float | None = None                # busy: seconds to wait
     log_id: int | None = None
-
-
-def _deterministic(ids, lang):
-    rows = stored_decisions(ids)
-    if not rows:
-        return NO_ANSWER[lang]
-    lines = []
-    for d in rows:
-        lines.append("• " + decision_summary(d))
-        lines += [f"   – {w}" for w in d["why"]]
-        if d.get("stop_rule"):
-            lines.append(f"   – stop rule: {d['stop_rule']}")
-    return "\n".join(lines)
 
 
 class ChatBot:
@@ -129,7 +109,7 @@ class ChatBot:
             return reply
 
         if self.client is None:
-            reply.text, reply.fallback = _deterministic(g.entity_ids, g.language), "no_key"
+            reply.text, reply.fallback = deterministic_reply(g.entity_ids, g.language), "no_key"
             reply.latency_ms = round((time.monotonic() - start) * 1000)
             return reply
 
@@ -161,7 +141,7 @@ class ChatBot:
         if guard.ok:
             reply.text = a.text
         else:
-            reply.text = _deterministic(g.entity_ids, g.language)
+            reply.text = deterministic_reply(g.entity_ids, g.language)
             reply.fallback = "llm_error" if a.meta.get("error") else "guard_failed"
         reply.latency_ms = round((time.monotonic() - start) * 1000)
         return reply

@@ -6,12 +6,8 @@ The model gets three read-only tools over the stored run:
     run_sql(query)         SELECT over cur_decisions / cur_level_totals / cur_proposed_tests
     glossary(term)         what a term means, with the real thresholds from config
 
-Entities the gate already resolved are fetched BEFORE the first call (saves a
-round trip and tokens). The model may then call tools itself, at most
-chat.max_tool_calls times; after that it must answer with what it has.
-
-Every tool result is kept in `facts` -- the guard (step 4) checks the answer
-against exactly these.
+Entities the gate already resolved are fetched BEFORE the first call (saves a round trip and tokens). 
+The model may then call tools itself, at most chat.max_tool_calls times; then must answer with what it has.
 """
 
 import json
@@ -26,7 +22,8 @@ from .store import entity_context, run_sql, sql_schema
 
 _cfg = load_config()["chat"]
 
-LANG_NAME = {"en": "English", "ar": "Egyptian Arabic (Arabic script)",
+LANG_NAME = {"en": "English", 
+             "ar": "Egyptian Arabic (Arabic script)",
              "franco": "Franco-Arabic (Egyptian Arabic in Latin letters)"}
 
 SYSTEM = """You explain the advertising decisions a statistical system ALREADY made for a premium-food \
@@ -141,8 +138,6 @@ def build_messages(question, gate, history, facts, selected_name=None):
 
 def answer(client, question, gate, history=None, selected_name=None, model=None,
            max_tool_calls=None, facts=None) -> AnswerResult:
-    """facts: already-fetched facts to reuse (the rewrite passes the first
-    attempt's facts instead of fetching them again)."""
     model = model or _cfg["answer_model"]
     max_tool_calls = _cfg["max_tool_calls"] if max_tool_calls is None else max_tool_calls
     facts = list(facts) if facts is not None else prefetch(gate)

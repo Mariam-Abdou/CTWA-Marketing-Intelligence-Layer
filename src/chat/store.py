@@ -1,6 +1,4 @@
-"""Read-only access to the stored decisions (outputs/trace.db) for the chat.
-Shared by the refusal path ("here is what the system recommends") and,
-next, the answer step's get_entity tool."""
+"""Read-only access to the stored decisions (outputs/trace.db) for the chat."""
 
 import json
 import sqlite3
@@ -9,6 +7,7 @@ from contextlib import closing
 from ..config import load_config
 
 DB = load_config()["chat"]["db_path"]
+BAR = load_config()["decision"]["probability_threshold"]   # same bar the pipeline decides with
 ACTION_TEXT = {
     "scale": "scale it (gets the main share of the next budget)",
     "hold": "keep it as is",
@@ -36,7 +35,7 @@ def stored_decisions(ids: list[str], db_path: str = DB) -> list[dict]:
 
 
 def decision_summary(d: dict) -> str:
-    """One deterministic line per entity -- no LLM, so it cannot misstate the decision."""
+    """One deterministic line per entity."""
     line = (f"**{d['name']}** ({d['level']}): {ACTION_TEXT.get(d['action'], d['action'])}"
             f" · {BUCKET_TEXT.get(d['bucket'], d['bucket'])}")
     if d["budget_share"]:
@@ -57,8 +56,8 @@ _DROP_KEYS = {"facts_given", "hypothesis_prompt", "rule_based_hypothesis", "min_
 
 def _compact(v):
     if isinstance(v, float):
-        # rates/probabilities: 4 significant digits; money and counts: 2 decimals
-        # (4 sig. digits turned a spend of 140,812 into 140,800)
+        # rates/probabilities: 4 significant digits
+        # money and counts: 2 decimals
         return round(v, 2) if abs(v) >= 100 else float(f"{v:.4g}")
     if isinstance(v, dict):
         return {k: _compact(x) for k, x in v.items()
@@ -69,9 +68,8 @@ def _compact(v):
 
 
 def entity_context(entity_id: str, db_path: str = DB) -> dict | None:
-    """Everything needed to explain one id's decision, compact: who it is,
-    its parent and children (one line each), the final decision, and the 12
-    steps (inputs, outputs, rule). Conversations are summarised, not listed."""
+    """Everything needed to explain one id's decision, compact: who it is, its parent and children (one line each),
+       the final decision, and the 12 steps (inputs, outputs, rule). Conversations are summarised, not listed."""
     with closing(sqlite3.connect(db_path)) as db:
         db.row_factory = sqlite3.Row
         d = db.execute("SELECT * FROM current_decisions WHERE entity_id = ?", (entity_id,)).fetchone()
@@ -133,9 +131,8 @@ def _step_view(s) -> dict:
     if s["step_key"] == "test_plan" and not s["applied"]:
         return out
     if s["step_key"] in ("fatigue_guardrail", "cpa_guardrail") and not s["applied"]:
-        # The numbers are computed for every id, but the guardrail only RUNS
-        # when the raw action is scale. Showing "fatigued: true" here made the
-        # model say the item was "flagged as fatigued" -- it was never checked.
+        # The numbers are computed for every id, but the guardrail only RUNS when the raw action is scale.
+        # Showing "fatigued: true" made the model say it is flagged as fatigued, it was never checked.
         out["note"] = "NOT CHECKED: this guardrail only runs when the raw action is scale"
         return out
     out["in"], out["out"] = inputs, outputs
@@ -147,8 +144,7 @@ def _pct(x):
 
 
 def decision_path(d: dict) -> list[str]:
-    """The decision as an ordered chain of plain sentences, written by code
-    from the stored row -- so the model cannot reorder the logic."""
+    """The decision as an ordered chain of plain sentences."""
     path = [f"Evidence: {d['successes']} sales out of {d['successes'] + d['failures']} resolved conversations"
             f" ({d['excluded']} excluded, outcome not known yet)."]
     if d["score"] is None:
@@ -158,7 +154,7 @@ def decision_path(d: dict) -> list[str]:
                     f"{_pct(d['interval_high'])}) compared with a baseline of {_pct(d['baseline'])} "
                     f"({d['baseline_source']}).")
         path.append(f"P(better than baseline) = {_pct(d['p_better'])}, P(worse) = {_pct(d['p_worse'])}; "
-                    f"the bar to act is 75.0% -> the numbers alone say {d['raw_action'].upper()}.")
+                    f"the bar to act is {_pct(BAR)} -> the numbers alone say {d['raw_action'].upper()}.")
     if d.get("spend") is not None:
         money = (f"Money (context, not part of the score): spend {d['spend']:,.0f} EGP, revenue "
                  f"{(d.get('revenue') or 0):,.0f} EGP, {d.get('sales') or 0} sales")
@@ -224,10 +220,8 @@ def run_sql(query: str, db_path: str = DB) -> dict:
         for name, body in SQL_VIEWS.items():
             conn.execute(f"CREATE TEMP VIEW cur_{name} AS {body}")
         def authorizer(action, arg1, arg2, dbname, source):
-            # A read is allowed only when it happens INSIDE one of the cur_*
-            # views (source = the view's name). Reading a base table directly
-            # -- runs, raw decisions of other runs, conversations with
-            # customer phone numbers -- has no view as source and is denied.
+            # A read is allowed only when it happens INSIDE one of the cur_* views. Reading a base table directly has no view
+            # as source and is denied. (e.g. runs, raw decisions of other runs, conversations with customer phone numbers, etc.)
             if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_FUNCTION):
                 return sqlite3.SQLITE_OK
             if action == sqlite3.SQLITE_READ and (

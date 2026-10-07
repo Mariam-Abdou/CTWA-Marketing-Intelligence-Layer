@@ -1,8 +1,6 @@
 """
-Chat log: one row per question -- what was asked, how it was routed, which
-tools ran, what the guard said, what the user saw, and their feedback.
-Separate file from trace.db (that one is rebuilt by every pipeline run).
-Contains user questions: keep it out of git.
+Chat log: one row per question: what was asked, how it was routed, which tools ran, 
+what the guard said, what the user saw, and their feedback.
 """
 
 import json

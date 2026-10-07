@@ -2,17 +2,15 @@
 Step 4: check the written answer against the facts it was given. Code only.
 
 Three checks:
-  numbers   every number in the answer must appear in the facts (exactly,
-            rounded, or as a percent of a fraction). Catches invented or
-            computed figures.
-  actions   a sentence naming an entity must not give it an action that is
-            neither its stored final action nor its raw action. Catches
-            "X was killed" when X is on hold.
-  advice    no new decisions or predictions ("I recommend", "you should
-            increase", "will boost sales").
+  numbers   every number in the answer must appear in the facts (exactly, rounded, 
+            or as a percent of a fraction). Catches invented or computed figures.
+  actions   a sentence naming an entity must not give it an action that is neither
+            its stored final action nor its raw action.
+  advice    no new decisions or predictions ("I recommend", "you should increase",
+            "will boost sales").
 
-A failed answer gets one rewrite; if that fails too, the bot falls back to a
-deterministic reply built from the stored decision (src/chat/bot.py).
+A failed answer gets one rewrite; if fails, then falls back to a deterministic 
+reply built from the stored decision (src/chat/bot.py).
 """
 
 import re
@@ -150,9 +148,8 @@ VERDICT = re.compile(r"\b(?:above|over|exceed\w*|cross\w*|past|beyond)\b[^.]{0,2
 
 
 def check_guardrail_reasoning(text: str, facts: list) -> list:
-    """If an entity's guardrails did not run, a sentence that talks about
-    fatigue / the stop line must say they were not checked. Catches 'cost per
-    sale is above the stop line, but it was ignored' for a held item."""
+    """If an entity's guardrails did not run, a sentence that talks about fatigue / the stop line must
+    say they were not checked. Catches "cost per sale is above the stop line, but it was ignored" for a held item."""
     issues = []
     for f in facts:
         r = f["result"]
@@ -172,9 +169,8 @@ PROB = re.compile(r"\b(better|worse)\b[^.\d%]{0,45}?(\d+(?:\.\d+)?)\s*%", re.I)
 
 
 def check_probabilities(text: str, facts: list) -> list:
-    """A percent written right after 'better'/'worse' must be THAT entity's
-    P(better)/P(worse) -- not the 75% bar, and not rounded over it.
-    Only checked when the answer is about one entity (unambiguous)."""
+    """A percent written right after 'better'/'worse' must be THAT entity's P(better)/P(worse), 
+    not transformed. Only checked when the answer is about one entity (unambiguous)."""
     ents = [f["result"] for f in facts if f["tool"] == "get_entity"
             and isinstance(f["result"], dict) and "steps" in f["result"]]
     if len(ents) != 1:
