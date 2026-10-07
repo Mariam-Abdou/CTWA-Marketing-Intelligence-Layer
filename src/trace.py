@@ -19,6 +19,8 @@ from .auditing.findings import flag_findings
 from .decision.outcome_decision import PROBABILITY_THRESHOLD, MIN_N_FOR_ACTION
 from .storage.trace_db import build_steps, write_run
 from .insights.signals import conversation_signals
+from .insights.money import order_money
+from .insights.customers import build_customers
 
 _cfg = load_config()
 
@@ -127,7 +129,10 @@ def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, o
             steps[eid] = build_steps(
                 level=level, entity_id=eid, row=row, rate=rate,
                 posterior=lv["posteriors"].get(eid), prior_info=prior_info,
-                plan_trace=lv["plan"].trace.get(eid), roas_detail=lv["roas_details"].get(eid),
+                plan_trace=lv["plan"].trace.get(eid),
+                roas_detail={**(lv["roas_details"].get(eid) or {}), **order_money([
+                    {"outcome_type": conv_class[c]["outcome_type"],
+                     **(conv_class[c].get("signals") or {})} for c in links.get(eid, [])])},
                 money_context=money_context, findings=findings.get(eid, []),
                 conv_counter=conv_counter, min_success_amount=MIN_SUCCESS_AMOUNT,
             )
@@ -176,6 +181,19 @@ def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, o
                         "unmatched_ctwa": len(join_result.unmatched_ctwa)},
     }
 
+    raw_by_id = {r["id"]: r for r in raw_conversations}
+    customers = build_customers([{
+        "customer_id": (raw_by_id[cid].get("customer") or {}).get("id"), "cycle": raw_by_id[cid].get("cycle"),
+        "started_at": raw_by_id[cid].get("started_at"),
+        "success": None if c["success"] is None else int(c["success"]),
+        "platform": (raw_by_id[cid].get("source") or {}).get("platform"), "ad_id": c["ad_id"],
+        "city": (c.get("signals") or {}).get("city"),
+        "ordered_products": (c.get("signals") or {}).get("ordered_products"),
+        "order_value": (c.get("signals") or {}).get("gross_amount"),
+        "refunds": (c.get("signals") or {}).get("refunded_amount"), "net": c["net_amount"],
+    } for cid, c in conv_class.items() if cid in raw_by_id],
+        {p["id"]: p.get("name", p["id"]) for p in load_json(paths["products"])})
+
     write_run(
         db_path, run_id=run_id, generated_at=datetime.now().isoformat(timespec="seconds"),
         paths=paths, config=_cfg, run_params=run_params,
@@ -183,5 +201,6 @@ def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, o
         raw_meta=load_json(paths["meta"]), raw_products=load_json(paths["products"]),
         conv_class=conv_class, conv_links=links, entities=entities,
         levels=level_out, proposed=proposed, keep_runs=db_cfg.get("keep_runs", 10),
+        customers=customers,
     )
     return db_path

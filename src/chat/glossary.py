@@ -66,8 +66,10 @@ TERMS = {
                       f"Guardrail: only checked when the numbers say scale; once spend passes "
                       f"{_cpa['min_spend_multiplier']}x the baseline cost per sale, scale becomes hold if there are "
                       f"zero sales or the cost per sale is above {_cpa['stop_multiplier']}x the baseline."),
-    "roas": ("return on ad spend, shrunk roas",
-             "Revenue (net of refunds) divided by Meta spend. The system uses a 'shrunk' ROAS that is pulled toward "
+    "roas": ("return on ad spend, shrunk roas, revenue, revenue vs spend, return",
+             "Net revenue = order value of delivered orders minus refunds, from the WhatsApp chats in our data "
+             "ONLY -- not the merchant's full return (no offline, repeat or untracked sales). ROAS = that net "
+             "revenue divided by Meta spend. The system uses a 'shrunk' ROAS that is pulled toward "
              "the account average when there are few conversations. ROAS is used for budget weighting and "
              "guardrails, never inside the score."),
     "stop rule": ("stop criterion, when to stop",
@@ -104,6 +106,12 @@ TERMS = {
                 "the order may still have been handled outside the chat, so treat it as a lead, not proof), "
                 "thinking (left to think / come back later), spam, unclear. Every tag keeps the exact message "
                 "that triggered it. Rules, not understanding: a floor to check, not a verdict."),
+    "customers": ("customer segments, repeat buyers, repeat customers, one-time buyers, never returned, cities",
+                  "Customers are counted by customer id over the seasonal cycles in our data. Repeat buyer = "
+                  "bought in 2 or more cycles. Bought once, never came back = one cycle with a purchase and no "
+                  "chat in any later cycle. Bought once in the last cycle = too early to tell (there was no later "
+                  "cycle to come back in). Never bought = chatted only. Cities are as written by the customer; "
+                  "regions group Cairo / Giza / Alexandria / Delta. No names or phones are used."),
     "findings": ("audit",
                  "Cases where the decision and the money disagree: scaled but losing money, killed but profitable, "
                  "or a top earner that is not being scaled."),

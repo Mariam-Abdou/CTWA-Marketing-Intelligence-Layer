@@ -13,6 +13,7 @@ Without an API key the bot still runs: keyword gate, and deterministic
 replies instead of written answers.
 """
 
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -26,6 +27,7 @@ from .gate import REPLIES, LLMGate, _detect_language, route
 from .guard import check
 from .llm import get_client
 from .store import decision_summary, stored_decisions
+from ..insights.money import CAVEAT
 
 _cfg = load_config()["chat"]
 
@@ -44,6 +46,19 @@ class Reply:
     options: list = field(default_factory=list)     # clarify: [{id, name, level}]
     retry_after: float | None = None                # busy: seconds to wait
     log_id: int | None = None
+
+
+MONEY_WORDS = re.compile(r"revenue|roas|return on|\bspend|\bspent|order value|refund|\begp\b|"
+                         r"إيراد|ايراد|عائد|صرف|مصاريف|فلوس|جنيه|e7na sarafna|el sarf|3a2ed", re.I)
+HAS_CAVEAT = re.compile(r"full return|not the merchant|عائد التاجر|kol 3a2ed", re.I)
+
+
+def with_money_caveat(text: str, lang: str) -> str:
+    """The mentor's rule, enforced by code: any answer that talks about money
+    says it covers only the chats in our data."""
+    if MONEY_WORDS.search(text or "") and not HAS_CAVEAT.search(text):
+        return f"{text}\n\n_{CAVEAT.get(lang, CAVEAT['en'])}_"
+    return text
 
 
 class ChatBot:
@@ -139,7 +154,7 @@ class ChatBot:
 
         reply.guard = {"ok": guard.ok, "issues": guard.issues}
         if guard.ok:
-            reply.text = a.text
+            reply.text = with_money_caveat(a.text, g.language)
         else:
             reply.text = deterministic_reply(g.entity_ids, g.language)
             reply.fallback = "llm_error" if a.meta.get("error") else "guard_failed"

@@ -12,6 +12,7 @@ import streamlit as st
 
 from ..config import load_config
 from ..chat.store import decision_path
+from ..config import load_config as _lc  # noqa: F401
 
 DB = load_config()["chat"]["db_path"]
 LEVELS = [("campaign", "Campaigns", "the goal"), ("adset", "Audiences", "who sees it"),
@@ -85,9 +86,48 @@ def conversation_summary(entity_id, v=0) -> dict:
 
 
 @st.cache_data
+def customers_of(entity_id, v=0) -> dict:
+    from ..chat.store import get_customers
+    return get_customers(entity_id, limit=5)
+
+
+@st.cache_data
 def customers_said(entity_id, v=0) -> dict:
     from ..chat.store import get_conversations
     return get_conversations(entity_id, limit=5)
+
+
+_dec = load_config()["decision"]
+BAR, MIN_N = _dec["probability_threshold"], _dec["min_n_for_action"]
+
+
+def pct_vs_bar(x) -> str:
+    """One decimal, or two when one decimal would make it look equal to the bar."""
+    if x is None:
+        return "—"
+    return f"{x * 100:.2f}%" if abs(x - BAR) < 0.0005 or round(x * 100, 1) == round(BAR * 100, 1) else pct(x)
+
+
+def how_sure(r: dict) -> tuple[str, str]:
+    """(short label, one plain sentence) -- from the stored numbers, by code."""
+    n = (r.get("successes") or 0) + (r.get("failures") or 0)
+    if r.get("score") is None or n == 0:
+        return "No data yet", "No chats with a known outcome yet."
+    if n < MIN_N:
+        return "Not sure — too few chats", (f"Only {n} chats with a known outcome; the system does not act "
+                                            f"on fewer than {MIN_N}.")
+    pb, pw, raw = r.get("p_better") or 0, r.get("p_worse") or 0, r.get("raw_action")
+    base = f"{pct(r.get('baseline'))} ({r.get('baseline_source')})"
+    if raw in ("scale", "kill"):
+        p = pb if raw == "scale" else pw
+        word = "Very sure" if p >= 0.95 else "Sure" if p >= 0.85 else "Fairly sure"
+        side = "better" if raw == "scale" else "worse"
+        text = f"{pct_vs_bar(p)} chance its true sale rate is {side} than {base}; the bar to act is {pct(BAR)}."
+        if r.get("action") != raw:
+            return f"{word} — but held back", text + f" It was held back by {r.get('held_back_by')}."
+        return word, text
+    return "Not sure yet — too close to call", (f"{pct_vs_bar(pb)} chance it is better and {pct_vs_bar(pw)} that it is worse "
+                                                 f"than {base}; neither reaches the {pct(BAR)} bar.")
 
 
 def clean(row) -> dict:

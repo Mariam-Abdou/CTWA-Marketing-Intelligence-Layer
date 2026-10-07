@@ -7,6 +7,7 @@ import streamlit as st
 
 from . import data as D
 from .chat import chat_panel
+from ..insights.money import CAVEAT
 
 NAV = {}   # filled by app.py: {"report": st.Page, ...}
 
@@ -72,12 +73,16 @@ def dashboard():
             rows["Score"] = rows.score * 100
             rows["Likely range"] = [f"{D.pct(a, 0)} – {D.pct(b, 0)}" for a, b in zip(rows.interval_low, rows.interval_high)]
             rows["Evidence"] = [f"{s} sales / {s + f} chats" for s, f in zip(rows.successes, rows.failures)]
+            rows["How sure"] = [D.how_sure(D.clean(r))[0] for _, r in rows.iterrows()]
+            rows["Why"] = rows.reasoning.fillna("")
             _clickable_table(rows.reset_index(drop=True),
-                             ["name", "Decision", "Budget", "Next budget", "Score", "Likely range", "Evidence"],
+                             ["name", "Decision", "Budget", "How sure", "Score", "Likely range", "Evidence", "Why"],
                              {"name": st.column_config.TextColumn(D.LEVEL_NOUN[level].title(), width="large"),
                               "Next budget": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=100),
                               "Score": st.column_config.NumberColumn(format="%.1f%%",
-                                                                      help="Chance a chat ends in a sale")},
+                                                                      help="Chance a chat ends in a sale"),
+                              "Why": st.column_config.TextColumn(width="large",
+                                                                 help="Plain-language reason; open the row for more")},
                              key=f"dash_{level}")
 
     tests = D.proposed_tests(v)
@@ -126,7 +131,7 @@ def explorer():
     rows["Score"] = rows.score * 100
     rows["Sales / chats"] = [f"{s} / {s + f}" for s, f in zip(rows.successes, rows.failures)]
     rows["Flag"] = ["⚑" if n else "" for n in rows.finding_count]
-    st.caption(f"{len(rows)} of {len(df)} shown")
+    st.caption(f"{len(rows)} of {len(df)} shown · money columns: {CAVEAT['en']}")
     _clickable_table(rows.reset_index(drop=True),
                      ["Level", "name", "parent_name", "Decision", "Budget", "Score", "Sales / chats",
                       "spend", "revenue", "roas_raw", "cost_per_sale", "Flag"],
@@ -163,77 +168,121 @@ def report():
 
     left, right = st.columns([3, 2], gap="large")
     with left:
+        # ---------------- the one-minute report ----------------
         st.title(r["name"])
         st.markdown(f"{D.ACTION_BADGE[r['action']]} &nbsp; **{D.funding(r)}** &nbsp; · &nbsp; "
                     f"{D.LEVEL_NOUN[r['level']]} · {r['detail'].split('=', 1)[-1].replace('_', ' ')}")
         if r.get("reasoning"):
             st.markdown(f"#### {r['reasoning']}")
+        sure, sure_text = D.how_sure(r)
+        n = (r["successes"] or 0) + (r["failures"] or 0)
+        m = st.columns(4)
+        m[0].metric("How sure", sure)
+        m[1].metric("Score", D.pct(r["score"]), help="Chance a chat from this ends in a sale")
+        m[2].metric("Likely range", f"{D.pct(r['interval_low'], 0)}–{D.pct(r['interval_high'], 0)}",
+                    help="90% range for the true sale rate: wide = few chats")
+        m[3].metric("Evidence", f"{r['successes']} sales / {n} chats",
+                    help=f"{r['excluded'] or 0} more chats still open, not counted")
+        st.caption(sure_text)
         for f in json.loads(r.get("findings_json") or "[]"):
             st.warning(f"**Worth a second look:** {f['finding']}")
 
-        m = st.columns(4)
-        m[0].metric("Score", D.pct(r["score"]), help="Chance a chat from this ends in a sale")
-        m[1].metric("Likely range", f"{D.pct(r['interval_low'], 0)}–{D.pct(r['interval_high'], 0)}",
-                    help="90% interval: wide = few chats")
-        m[2].metric("Sales / resolved chats", f"{r['successes']} / {r['successes'] + r['failures']}")
-        m[3].metric("Compared with", D.pct(r["baseline"]), help=r.get("baseline_source"))
-        m = st.columns(4)
-        m[0].metric("Spend", D.egp(r["spend"]))
-        m[1].metric("Revenue", D.egp(r["revenue"]))
-        m[2].metric("ROAS", "—" if r["roas_raw"] is None else f"{r['roas_raw']:.2f}")
-        m[3].metric("Cost per sale", D.egp(r["cost_per_sale"]),
-                    help=f"Level baseline {D.egp(r['baseline_cost_per_sale'])}")
-
-        st.subheader("How this decision was made")
-        for i, line in enumerate(D.path_for(r), 1):
-            st.markdown(f"{i}. {line}")
+        said = D.customers_said(eid, v)
+        if said and said.get("samples"):
+            reasons = said["summary"].get("why_no_sale (tagged by rules, all chats without a sale)") or {}
+            top = [(k, c) for k, c in reasons.items() if k != "no clear reason in the chat"][:2]
+            # quote the most common reason itself, not just any no-sale chat
+            quote = next((x["customer_words"] for x in said["samples"]
+                          if top and x.get("reason") == top[0][0] and x.get("customer_words")), None)
+            if top or quote:
+                line = "**From the chats:** " + " · ".join(f"{c} {k}" for k, c in top)
+                if quote:
+                    line += f' · *"{quote}"*'
+                st.markdown(line)
 
         if r["bucket"] == "explore":
-            st.subheader("The test")
-            st.markdown(f"**What it asks:** {r['hypothesis']}")
-            st.markdown(f"**When to stop:** {r['stop_rule']}")
+            with st.container(border=True):
+                st.markdown(f"**The test asks:** {r['hypothesis']}")
+                st.markdown(f"**Stop when:** {r['stop_rule']}")
 
-        rel = df[(df.entity_id == r["parent_id"]) | (df.parent_id == eid)]
-        if not rel.empty:
-            st.subheader("Related")
-            for _, x in rel.iterrows():
-                kind = "Part of" if x.entity_id == r["parent_id"] else "Contains"
-                c1, c2 = st.columns([4, 1])
-                c1.markdown(f"{kind}: **{x['name']}** ({D.LEVEL_NOUN[x['level']]}) — "
-                            f"{x['action']} · {D.funding(D.clean(x))}")
-                if c2.button("Open", key=f"rel_{x.entity_id}"):
-                    open_report(x.entity_id)
+        st.divider()
+        st.caption("Details")
 
-        said = D.customers_said(eid, v)
-        if said and said["samples"]:
-            st.subheader("What customers said")
-            s = said["summary"]
-            st.caption(f"{s['conversations']} chats · {s['sales']} sales · {s['no_sale']} without a sale · "
-                       f"{s['outcome_not_known_yet']} still open. Reasons are tagged by keyword rules on the "
-                       "customer's own words.")
-            reasons = s.get("why_no_sale (tagged by rules, all chats without a sale)") or {}
-            if reasons:
-                st.dataframe(pd.DataFrame(list(reasons.items()), columns=["Why no sale", "Chats"]),
-                             hide_index=True, width="stretch")
-            for x in said["samples"]:
-                with st.container(border=True):
+        # ---------------- details, on demand ----------------
+        with st.expander("How this decision was made"):
+            for i, line in enumerate(D.path_for(r), 1):
+                st.markdown(f"{i}. {line}")
+
+        with st.expander("Revenue against spend"):
+            m = st.columns(4)
+            m[0].metric("Order value", D.egp(r["order_value"]),
+                        help=f"{r['orders_delivered'] or 0} orders delivered (incl. later refunded)")
+            m[1].metric("Refunds", D.egp(r["refunds"]), help=f"{r['orders_refunded'] or 0} orders refunded")
+            m[2].metric("Net revenue", D.egp(r["revenue"]), help="Order value minus refunds")
+            m[3].metric("Meta spend", D.egp(r["spend"]))
+            m = st.columns(4)
+            m[0].metric("Return per 1 EGP", "—" if r["roas_raw"] is None else f"{r['roas_raw']:.2f}")
+            m[1].metric("Cost per sale", D.egp(r["cost_per_sale"]),
+                        help=f"Level baseline {D.egp(r['baseline_cost_per_sale'])}")
+            m[2].metric("Cancelled orders", D.egp(r["cancelled_order_value"]),
+                        help=f"{r['orders_cancelled'] or 0} orders, not counted in revenue")
+            m[3].metric("Pending orders", D.egp(r["pending_order_value"]),
+                        help=f"{r['orders_pending'] or 0} orders, outcome not known yet -- not counted")
+            st.caption(CAVEAT["en"])
+
+        if said and said.get("samples"):
+            with st.expander("What customers said"):
+                s = said["summary"]
+                st.caption(f"{s['conversations']} chats · {s['sales']} sales · {s['no_sale']} without a sale · "
+                           f"{s['outcome_not_known_yet']} still open. Reasons are tagged by keyword rules on "
+                           "the customer's own words.")
+                reasons = s.get("why_no_sale (tagged by rules, all chats without a sale)") or {}
+                if reasons:
+                    st.dataframe(pd.DataFrame(list(reasons.items()), columns=["Why no sale", "Chats"]),
+                                 hide_index=True, width="stretch")
+                for x in said["samples"]:
                     head = "✅ sale" if x.get("ended_in_sale") else f"✖ {x['outcome']}"
                     st.markdown(f"**{head}**" + (f" · {x['reason']}" if x.get("reason") else "")
                                 + f" · `{x['conv_id']}` · customer `{x['customer_id']}`")
                     if x.get("customer_words"):
                         st.markdown(f"> {x['customer_words']}")
-                    with st.expander("last messages"):
-                        for line in x.get("last_messages", []):
-                            st.markdown(f"- {line}")
+                    st.caption("  \n".join(x.get("last_messages", [])))
+
+        cust = D.customers_of(eid, v)
+        if cust and cust.get("summary", {}).get("customers"):
+            with st.expander(f"Customers ({cust['summary']['customers']})"):
+                s = cust["summary"]
+                c1, c2 = st.columns(2)
+                c1.dataframe(pd.DataFrame([(k, n_, s["net_revenue_by_segment"].get(k, 0))
+                                           for k, n_ in s["segments"].items()],
+                                          columns=["Segment", "Customers", "Net revenue (EGP)"]),
+                             hide_index=True, width="stretch")
+                c2.dataframe(pd.DataFrame(list(s["regions"].items()), columns=["Region", "Customers"]),
+                             hide_index=True, width="stretch")
+                if s.get("top_products_bought"):
+                    st.caption("Most bought: " + " · ".join(f"{p_} ({n_})" for p_, n_ in s["top_products_bought"].items()))
+                st.caption("Customers who chatted from this at least once (they may also have come via other ads). "
+                           "By customer id only, over the cycles in our data.")
+
+        rel = df[(df.entity_id == r["parent_id"]) | (df.parent_id == eid)]
+        if not rel.empty:
+            with st.expander(f"Related ({len(rel)})"):
+                for _, x in rel.iterrows():
+                    kind = "Part of" if x.entity_id == r["parent_id"] else "Contains"
+                    c1, c2 = st.columns([4, 1])
+                    c1.markdown(f"{kind}: **{x['name']}** ({D.LEVEL_NOUN[x['level']]}) — "
+                                f"{x['action']} · {D.funding(D.clean(x))}")
+                    if c2.button("Open", key=f"rel_{x.entity_id}"):
+                        open_report(x.entity_id)
 
         conv = D.conversation_summary(eid, v)
         if conv:
-            st.subheader(f"Conversations ({conv['count']})")
-            c1, c2 = st.columns(2)
-            c1.bar_chart(pd.Series(conv["outcome_types"], name="chats"), horizontal=True, height=220)
-            if conv["products"]:
-                c2.dataframe(pd.DataFrame(conv["products"], columns=["Product mentioned", "Mentions"]),
-                             hide_index=True, width="stretch")
+            with st.expander(f"Conversations ({conv['count']})"):
+                c1, c2 = st.columns(2)
+                c1.bar_chart(pd.Series(conv["outcome_types"], name="chats"), horizontal=True, height=220)
+                if conv["products"]:
+                    c2.dataframe(pd.DataFrame(conv["products"], columns=["Product mentioned", "Mentions"]),
+                                 hide_index=True, width="stretch")
 
         series = D.daily_series(eid, v)
         if not series.empty:
