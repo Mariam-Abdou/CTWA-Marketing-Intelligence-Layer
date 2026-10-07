@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     p_better REAL, p_worse REAL, decision_rule TEXT, raw_action TEXT,
     -- step 5: money
     spend REAL, revenue REAL, sales INTEGER, resolved_conversations INTEGER,
+    order_value REAL, refunds REAL, orders_delivered INTEGER, orders_refunded INTEGER,
+    cancelled_order_value REAL, orders_cancelled INTEGER, pending_order_value REAL, orders_pending INTEGER,
     roas_raw REAL, roas_shrunk REAL, cost_per_sale REAL,
     baseline_cost_per_sale REAL, level_median_roas REAL,
     -- steps 6-8: guardrails and final action
@@ -120,12 +122,21 @@ CREATE TABLE IF NOT EXISTS decisions (
     finding_count INTEGER, findings_json TEXT,
     PRIMARY KEY (run_id, entity_id)
 );
+CREATE TABLE IF NOT EXISTS customers (
+    -- by customer id only: no names, no phones (src/insights/customers.py)
+    run_id TEXT, customer_id TEXT, segment TEXT, city TEXT, region TEXT,
+    conversations INTEGER, cycles_json TEXT, bought_cycles_json TEXT, first_cycle INTEGER,
+    last_cycle INTEGER, sales INTEGER, order_value REAL, refunds REAL, net_revenue REAL,
+    products_json TEXT, platforms_json TEXT, ad_ids_json TEXT,
+    PRIMARY KEY (run_id, customer_id)
+);
 CREATE TABLE IF NOT EXISTS level_totals (
     -- Sums over the decisions table, per level. Totals across a level count
     -- each conversation once (campaign level = the whole account).
     run_id TEXT, level TEXT, entities INTEGER,
     spend REAL, revenue REAL, roas REAL, sales INTEGER, resolved_conversations INTEGER,
-    cost_per_sale REAL, scale_count INTEGER, hold_count INTEGER, kill_count INTEGER,
+    cost_per_sale REAL, order_value REAL, refunds REAL, cancelled_order_value REAL,
+    pending_order_value REAL, scale_count INTEGER, hold_count INTEGER, kill_count INTEGER,
     exploit_share REAL, explore_share REAL,
     PRIMARY KEY (run_id, level)
 );
@@ -151,10 +162,10 @@ CREATE VIEW IF NOT EXISTS current_steps AS
 
 # Bump when a table's columns change: an older database is rebuilt from
 # scratch on the next run instead of failing on a missing column.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 PER_RUN_TABLES = [
-    "level_totals", "entities", "conversations", "entity_conversations", "meta_objects", "entity_meta",
+    "customers", "level_totals", "entities", "conversations", "entity_conversations", "meta_objects", "entity_meta",
     "daily_insights", "entity_daily_series", "products", "decision_steps", "decisions",
     "proposed_tests", "entity_bundles", "runs",
 ]
@@ -287,8 +298,10 @@ def build_steps(*, level, entity_id, row, rate, posterior, prior_info, plan_trac
     # 5. money
     steps.append(_step(
         5, "money", "Money: spend, revenue, ROAS, cost per sale",
-        rule=("Context and guardrail input, never part of the score. ROAS is shrunk toward the "
-              "portfolio mean so a few conversations cannot swing it."),
+        rule=("Context and guardrail input, never part of the score. Net revenue = order value of "
+              "delivered/refunded orders minus refunds, from the chats in our data only (not the "
+              "merchant's full return). ROAS is shrunk toward the portfolio mean so a few "
+              "conversations cannot swing it."),
         inputs={"spend": (roas_detail or {}).get("spend"), "revenue": (roas_detail or {}).get("revenue"),
                 "sales": (roas_detail or {}).get("sales")},
         outputs={**(roas_detail or {}),
@@ -395,7 +408,7 @@ def build_steps(*, level, entity_id, row, rate, posterior, prior_info, plan_trac
 
 def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
               raw_conversations, raw_meta, raw_products, conv_class, conv_links,
-              entities, levels, proposed, keep_runs=10):
+              entities, levels, proposed, keep_runs=10, customers=None):
     """
     paths:          {conversations, meta, products, scoreboard_csv, plan_json}
     conv_class:     conv_id -> {outcome_type, net_amount, success, classification,
@@ -533,6 +546,11 @@ def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
                 p["budget_share"], p["expected_rate"], p["hypothesis"], p.get("hypothesis_source"),
                 p["stop_rule"], _j(p)))
 
+        db.executemany("INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+            (run_id, c["customer_id"], c["segment"], c["city"], c["region"], c["conversations"],
+             _j(c["cycles"]), _j(c["bought_cycles"]), c["first_cycle"], c["last_cycle"], c["sales"],
+             c["order_value"], c["refunds"], c["net_revenue"], _j(c["products"]), _j(c["platforms"]),
+             _j(c["ad_ids"])) for c in (customers or [])])
         _write_level_totals(db, run_id, run_params)
         _prune(db, keep_runs)
     with closing(_connect(db_path)) as db:
@@ -612,6 +630,9 @@ def _flat(e, steps, decision):
         "decision_rule": s["decision"]["rule"] if "decision" in s else None,
         "raw_action": decision["raw_action"],
         "spend": o("money").get("spend"), "revenue": o("money").get("revenue"),
+        **{k: o("money").get(k) for k in ("order_value", "refunds", "orders_delivered", "orders_refunded",
+                                          "cancelled_order_value", "orders_cancelled",
+                                          "pending_order_value", "orders_pending")},
         "sales": o("money").get("sales"),
         "resolved_conversations": o("money").get("resolved_conversations"),
         "roas_raw": o("money").get("raw_roas"), "roas_shrunk": o("money").get("shrunk_roas"),
@@ -648,6 +669,7 @@ def _write_level_totals(db, run_id, run_params):
                CASE WHEN SUM(spend) > 0 THEN SUM(revenue) / SUM(spend) END,
                SUM(sales), SUM(resolved_conversations),
                CASE WHEN SUM(sales) > 0 THEN SUM(spend) / SUM(sales) END,
+               SUM(order_value), SUM(refunds), SUM(cancelled_order_value), SUM(pending_order_value),
                SUM(action = 'scale'), SUM(action = 'hold'), SUM(action = 'kill'), ?, ?
         FROM decisions WHERE run_id = ? GROUP BY level""",
         (run_params["exploit_share"], run_params["explore_share"], run_id))

@@ -28,7 +28,7 @@ _cfg = load_config()["chat"]
 
 INTENTS = {
     "explain_entity": "about one or a few specific campaigns/adsets/ads: why a decision, its numbers, its test, its money",
-    "compare_or_list": "across many entities: lists, rankings, totals, counts, comparisons, 'which ... best/worst'",
+    "compare_or_list": "across many entities or customers: lists, rankings, totals, counts, comparisons, 'which ... best/worst', customer segments, repeat vs one-time buyers, cities, products bought, a customer id",
     "method": "how the system works: definitions, terms, how a number is calculated, what the system cannot know",
     "conversation_text": "what customers said, asked, complained about, why they did not buy / ghosted / refunded / cancelled, quotes from the chats -- for one entity or the whole account",
     "new_decision": "asks for something the stored decision cannot answer: a specific budget amount or % change, a what-if or prediction, a new campaign/creative, changing or overriding a stored decision, the bot's OWN opinion instead of the system's",

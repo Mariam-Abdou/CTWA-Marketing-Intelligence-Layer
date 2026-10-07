@@ -18,7 +18,7 @@ from ..config import load_config
 from .budget import BUDGETS
 from .glossary import glossary
 from .llm import is_rate_limit, retry_after
-from .store import entity_context, get_conversations, run_sql, sql_schema
+from .store import entity_context, get_conversations, get_customers, run_sql, sql_schema
 
 _cfg = load_config()["chat"]
 
@@ -45,6 +45,9 @@ or the interval).
 guardrails were NOT checked, say exactly that -- do not say the item is fatigued, flagged, above or \
 below a stop line, or that something was "ignored". Do not compare cost per sale with any line yourself.
 6c. Show scores, rates and probabilities as percents with one decimal (55.4%), never as 0.554.
+7a. Money: revenue here is order value of delivered orders minus refunds, from the chats in our data,
+next to Meta spend. Give those parts when asked about money or return. (A note that this is not the
+merchant's full return is added automatically -- you don't need to write it.)
 7b. Customer chats (get_conversations): when you explain WHY, back it with what customers actually said --
 quote their words EXACTLY as written, in the original language, inside double quotes, e.g. "غالي جداً".
 You may add a translation in parentheses WITHOUT quotes. Never put words in quotes that are not in the
@@ -87,6 +90,16 @@ TOOLS = [
             "entity_id": {"type": "string"}, "outcome": {"type": "string"},
             "reason": {"type": "string"}, "limit": {"type": "integer"}}}}},
     {"type": "function", "function": {
+        "name": "get_customers",
+        "description": "Customers by customer id (no names/phones): segments (repeat_buyer = bought in 2+ "
+                       "cycles, once_never_returned, once_came_back, once_last_cycle = too early to tell, "
+                       "never_bought), net revenue per segment, cities/regions, products bought. Optional "
+                       "filters: entity_id (customers who came from that campaign/adset/ad), segment, region "
+                       "(Cairo | Giza | Alexandria | Delta | Other), customer_id (e.g. cust_013).",
+        "parameters": {"type": "object", "properties": {
+            "entity_id": {"type": "string"}, "segment": {"type": "string"}, "region": {"type": "string"},
+            "customer_id": {"type": "string"}, "limit": {"type": "integer"}}}}},
+    {"type": "function", "function": {
         "name": "glossary",
         "description": "Meaning of a term or rule (score, interval, baseline, p_better, scale, kill, hold, "
                        "70/30, explore, fatigue, cost per sale, roas, stop rule, steps, limits, ...).",
@@ -109,6 +122,10 @@ def call_tool(name: str, args: dict) -> dict:
             return run_sql(str(args.get("query", "")))
         if name == "glossary":
             return glossary(str(args.get("term", "")))
+        if name == "get_customers":
+            return get_customers(args.get("entity_id") or None, args.get("segment") or None,
+                                 args.get("region") or None, args.get("customer_id") or None,
+                                 int(args.get("limit") or 10))
         if name == "get_conversations":
             return get_conversations(args.get("entity_id") or None, str(args.get("outcome") or "all"),
                                      args.get("reason") or None, int(args.get("limit") or 6))
