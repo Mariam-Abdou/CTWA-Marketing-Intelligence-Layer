@@ -160,6 +160,6 @@ chat:
   tokens_per_minute: 8000
   # Typical cost of one question on each model, used for that pre-check.
   estimated_gate_tokens: 2100
-  estimated_answer_tokens: 3500
+  estimated_answer_tokens: 5000
   # Every question, route, tools, guard result and reply -- for review and eval.
   log_path: "outputs/chat_log.db"

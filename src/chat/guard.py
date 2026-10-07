@@ -192,6 +192,40 @@ def check_probabilities(text: str, facts: list) -> list:
     return issues
 
 
+QUOTE = re.compile(r'["“”«»]([^"“”«»\n]{4,400})["“”«»]')
+
+
+def _norm(s: str) -> str:
+    return " ".join(s.lower().replace("’", "'").split())
+
+
+def _fact_strings(x, out):
+    if isinstance(x, str):
+        out.append(_norm(x))
+    elif isinstance(x, dict):
+        for v in x.values():
+            _fact_strings(v, out)
+    elif isinstance(x, (list, tuple)):
+        for v in x:
+            _fact_strings(v, out)
+
+
+def check_quotes(text: str, facts: list) -> list:
+    """Anything inside quotes must appear word for word in what the tools
+    returned -- a customer's message, a name, a label. A quote the model
+    made up, or 'quoted' in translation, is caught here."""
+    strings = []
+    _fact_strings([f["result"] for f in facts], strings)
+    haystack = "\n".join(strings)
+    issues = []
+    for m in QUOTE.finditer(text):
+        for part in re.split(r"\.\.\.|…", m.group(1)):
+            frag = _norm(part).strip(" .,،!?؟:;-")
+            if len(frag) >= 4 and frag not in haystack:
+                issues.append(f'quote not found in the chats or facts: "{part.strip()[:60]}"')
+    return list(dict.fromkeys(issues))
+
+
 def check_advice(text: str) -> list:
     return [f"new decision / prediction: '{m.group(0)}'"
             for p in ADVICE for m in [re.search(p, text, re.I)] if m]
@@ -201,5 +235,6 @@ def check(text: str, facts: list, question: str = "") -> GuardResult:
     if not text.strip():
         return GuardResult(False, ["empty answer"])
     issues = (check_numbers(text, facts, question) + check_actions(text, facts) + check_advice(text)
-              + check_guardrail_reasoning(text, facts) + check_probabilities(text, facts))
+              + check_guardrail_reasoning(text, facts) + check_probabilities(text, facts)
+              + check_quotes(text, facts))
     return GuardResult(not issues, issues)

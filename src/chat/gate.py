@@ -30,7 +30,7 @@ INTENTS = {
     "explain_entity": "about one or a few specific campaigns/adsets/ads: why a decision, its numbers, its test, its money",
     "compare_or_list": "across many entities: lists, rankings, totals, counts, comparisons, 'which ... best/worst'",
     "method": "how the system works: definitions, terms, how a number is calculated, what the system cannot know",
-    "conversation_text": "what customers said, asked, complained about, why they ghosted/refunded -- needs reading chat messages",
+    "conversation_text": "what customers said, asked, complained about, why they did not buy / ghosted / refunded / cancelled, quotes from the chats -- for one entity or the whole account",
     "new_decision": "asks for something the stored decision cannot answer: a specific budget amount or % change, a what-if or prediction, a new campaign/creative, changing or overriding a stored decision, the bot's OWN opinion instead of the system's",
     "out_of_scope": "nothing to do with this merchant's ads, scores or decisions",
     "unclear": "cannot tell what is being asked, or which entity, even with the history",
@@ -244,8 +244,6 @@ def route(g: GateResult, selected_id: str | None = None,
         return Route("refuse_decision", REPLIES["refuse_decision"][lang], ids)
     if g.intent == "out_of_scope" and g.confidence >= min_confidence:
         return Route("refuse_scope", REPLIES["refuse_scope"][lang])
-    if g.intent == "conversation_text":
-        return Route("not_yet", REPLIES["not_yet"][lang])
     if g.intent == "unclear" or g.confidence < min_confidence:
         return _clarify(g, lang)
     if g.intent == "explain_entity" and not ids:

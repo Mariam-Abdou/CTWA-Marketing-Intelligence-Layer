@@ -54,6 +54,10 @@ CREATE TABLE IF NOT EXISTS conversations (
     run_id TEXT, conv_id TEXT, customer_id TEXT, started_at TEXT, cycle INTEGER,
     platform TEXT, ad_id TEXT, adset_id TEXT, campaign_id TEXT, join_status TEXT,
     outcome_type TEXT, net_amount REAL, success INTEGER, classification TEXT,
+    -- read from the messages by rules (src/insights/signals.py)
+    gross_amount REAL, refunded_amount REAL, city TEXT,
+    message_count INTEGER, last_sender TEXT, unanswered_question INTEGER,
+    reason TEXT, reason_evidence TEXT, ordered_products_json TEXT,
     raw_json TEXT,
     PRIMARY KEY (run_id, conv_id)
 );
@@ -147,7 +151,7 @@ CREATE VIEW IF NOT EXISTS current_steps AS
 
 # Bump when a table's columns change: an older database is rebuilt from
 # scratch on the next run instead of failing on a missing column.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 PER_RUN_TABLES = [
     "level_totals", "entities", "conversations", "entity_conversations", "meta_objects", "entity_meta",
@@ -412,12 +416,18 @@ def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
         # raw inputs
         for raw in raw_conversations:
             c = conv_class[raw["id"]]
-            db.execute("INSERT INTO conversations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            sg = c.get("signals") or {}
+            db.execute("INSERT INTO conversations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
                 run_id, raw["id"], (raw.get("customer") or {}).get("id"), raw.get("started_at"),
                 raw.get("cycle"), (raw.get("source") or {}).get("platform"),
                 c["ad_id"], c["adset_id"], c["campaign_id"], c["join_status"],
                 c["outcome_type"], c["net_amount"],
-                None if c["success"] is None else int(c["success"]), c["classification"], _j(raw)))
+                None if c["success"] is None else int(c["success"]), c["classification"],
+                sg.get("gross_amount"), sg.get("refunded_amount"), sg.get("city"),
+                sg.get("message_count"), sg.get("last_sender"),
+                None if sg.get("unanswered_question") is None else int(sg["unanswered_question"]),
+                sg.get("reason"), sg.get("reason_evidence"), _j(sg.get("ordered_products") or []),
+                _j(raw)))
         for kind, key in (("campaign", "campaigns"), ("adset", "adsets"), ("ad", "ads"), ("creative", "creatives")):
             db.executemany("INSERT INTO meta_objects VALUES (?,?,?,?)",
                            [(run_id, kind, o["id"], _j(o)) for o in raw_meta.get(key, [])])
@@ -490,11 +500,14 @@ def write_run(db_path, *, run_id, generated_at, paths, config, run_params,
                 product_counter.update(_conversation_products(raw))
                 convs.append({"classification": conv_class[cid], "record": raw})
             outcome_counts = Counter(conv_class[c]["outcome_type"] for c in conv_ids)
+            reason_counts = Counter((conv_class[c].get("signals") or {}).get("reason")
+                                    for c in conv_ids if (conv_class[c].get("signals") or {}).get("reason"))
             bundle = {
                 "entity": {**e, "run_id": run_id},
                 "conversations": {
                     "count": len(conv_ids),
                     "outcome_types": dict(outcome_counts),
+                    "no_sale_reasons": dict(reason_counts.most_common()),
                     "products_mentioned": [
                         {"product": products_by_id.get(pid, {"id": pid}), "mentions": n}
                         for pid, n in product_counter.most_common()],
