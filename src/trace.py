@@ -18,11 +18,12 @@ from .scoring.amounts import get_outcome_amounts
 from .auditing.findings import flag_findings
 from .decision.outcome_decision import PROBABILITY_THRESHOLD, MIN_N_FOR_ACTION
 from .storage.trace_db import build_steps, write_run
+from .insights.signals import conversation_signals
 
 _cfg = load_config()
 
 
-def _classify_conversations(convs, join_result):
+def _classify_conversations(convs, join_result, raw_by_id=None):
     joined_by_id = {j.conversation.id: j for j in join_result.scoreable}
     organic = {c.id for c in join_result.organic_or_direct}
     out = {}
@@ -47,6 +48,8 @@ def _classify_conversations(convs, join_result):
             "adset_id": j.adset.id if j else None,
             "campaign_id": j.campaign.id if j else c.source.campaign_id,
         }
+        if raw_by_id and c.id in raw_by_id:
+            out[c.id]["signals"] = conversation_signals(raw_by_id[c.id], success)
     return out
 
 
@@ -77,7 +80,8 @@ def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, o
     db_cfg = _cfg.get("trace_db", {})
     db_path = db_cfg.get("path", "outputs/trace.db")
 
-    conv_class = _classify_conversations(convs, join_result)
+    raw_conversations = load_json(paths["conversations"])
+    conv_class = _classify_conversations(convs, join_result, {r["id"]: r for r in raw_conversations})
 
     # which conversations count toward which id -- same grouping as aggregator.raw_rates
     links = {}
@@ -175,7 +179,7 @@ def record_trace(*, run_id, paths, convs, meta, join_result, overall_baseline, o
     write_run(
         db_path, run_id=run_id, generated_at=datetime.now().isoformat(timespec="seconds"),
         paths=paths, config=_cfg, run_params=run_params,
-        raw_conversations=load_json(paths["conversations"]),
+        raw_conversations=raw_conversations,
         raw_meta=load_json(paths["meta"]), raw_products=load_json(paths["products"]),
         conv_class=conv_class, conv_links=links, entities=entities,
         levels=level_out, proposed=proposed, keep_runs=db_cfg.get("keep_runs", 10),

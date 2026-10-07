@@ -84,6 +84,12 @@ def conversation_summary(entity_id, v=0) -> dict:
                          for p in c["products_mentioned"][:8]]}
 
 
+@st.cache_data
+def customers_said(entity_id, v=0) -> dict:
+    from ..chat.store import get_conversations
+    return get_conversations(entity_id, limit=5)
+
+
 def clean(row) -> dict:
     """pandas row -> plain dict with None instead of NaN."""
     return {k: (None if (not isinstance(v, (list, dict, str)) and pd.isna(v)) else v) for k, v in dict(row).items()}

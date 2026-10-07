@@ -28,8 +28,8 @@ from src.chat.fallback import KeywordGate
 from src.chat.gate import INTENTS, LLMGate, route
 
 QUESTIONS = "data/chat_eval/gate_questions.json"
-ANSWERABLE = {"explain_entity", "compare_or_list", "method"}
-MUST_NOT_ANSWER = {"new_decision", "out_of_scope", "conversation_text"}
+ANSWERABLE = {"explain_entity", "compare_or_list", "method", "conversation_text"}
+MUST_NOT_ANSWER = {"new_decision", "out_of_scope"}
 BINS = [(0.0, 0.5), (0.5, 0.7), (0.7, 0.85), (0.85, 0.95), (0.95, 1.01)]
 
 

@@ -8,8 +8,7 @@ from ..chat.bot import ChatBot
 from ..chat.log import feedback
 
 ROUTE_NOTE = {"refuse_decision": "Explains decisions only — does not make new ones.",
-              "refuse_scope": "Outside what this assistant covers.",
-              "not_yet": "Needs conversation text — coming with conversation insights."}
+              "refuse_scope": "Outside what this assistant covers."}
 
 
 @st.cache_resource

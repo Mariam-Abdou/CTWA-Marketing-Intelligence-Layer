@@ -204,6 +204,28 @@ def report():
                 if c2.button("Open", key=f"rel_{x.entity_id}"):
                     open_report(x.entity_id)
 
+        said = D.customers_said(eid, v)
+        if said and said["samples"]:
+            st.subheader("What customers said")
+            s = said["summary"]
+            st.caption(f"{s['conversations']} chats · {s['sales']} sales · {s['no_sale']} without a sale · "
+                       f"{s['outcome_not_known_yet']} still open. Reasons are tagged by keyword rules on the "
+                       "customer's own words.")
+            reasons = s.get("why_no_sale (tagged by rules, all chats without a sale)") or {}
+            if reasons:
+                st.dataframe(pd.DataFrame(list(reasons.items()), columns=["Why no sale", "Chats"]),
+                             hide_index=True, width="stretch")
+            for x in said["samples"]:
+                with st.container(border=True):
+                    head = "✅ sale" if x.get("ended_in_sale") else f"✖ {x['outcome']}"
+                    st.markdown(f"**{head}**" + (f" · {x['reason']}" if x.get("reason") else "")
+                                + f" · `{x['conv_id']}` · customer `{x['customer_id']}`")
+                    if x.get("customer_words"):
+                        st.markdown(f"> {x['customer_words']}")
+                    with st.expander("last messages"):
+                        for line in x.get("last_messages", []):
+                            st.markdown(f"- {line}")
+
         conv = D.conversation_summary(eid, v)
         if conv:
             st.subheader(f"Conversations ({conv['count']})")

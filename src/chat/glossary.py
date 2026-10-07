@@ -97,6 +97,13 @@ TERMS = {
                "anything after the data ends. Scores are estimates with uncertainty, not promises. It cannot yet "
                "read what customers wrote (conversation text). It explains stored decisions; it does not predict "
                "the effect of budget changes."),
+    "reasons": ("why no sale, no-sale reasons, reason tags, no reply, ghosted",
+                "Chats that did not end in a sale are tagged with ONE reason by keyword rules on the customer's "
+                "own messages: quality, delivery, price, changed mind / cancelled, wrong number, not available, "
+                "no reply (the customer spoke last -- a question, an order, an address -- and there is no text reply; "
+                "the order may still have been handled outside the chat, so treat it as a lead, not proof), "
+                "thinking (left to think / come back later), spam, unclear. Every tag keeps the exact message "
+                "that triggered it. Rules, not understanding: a floor to check, not a verdict."),
     "findings": ("audit",
                  "Cases where the decision and the money disagree: scaled but losing money, killed but profitable, "
                  "or a top earner that is not being scaled."),
