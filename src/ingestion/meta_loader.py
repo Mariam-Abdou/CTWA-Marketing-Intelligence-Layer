@@ -80,11 +80,11 @@ def _parse_campaign(r: dict) -> Campaign:
 
 
 def _parse_adset(r: dict) -> Adset:
-    validate_enum(r.get("optimization_goal"), KNOWN_OPTIMIZATION_GOALS, "optimization_goal", r["id"])
+    goal = validate_enum(r.get("optimization_goal"), KNOWN_OPTIMIZATION_GOALS, "optimization_goal", r["id"])
     budget = r.get("daily_budget")
     return Adset(
         id=r["id"], name=r.get("name"), campaign_id=r.get("campaign_id"),
-        audience_type=r.get("audience_type"), optimization_goal=r["optimization_goal"],
+        audience_type=r.get("audience_type"), optimization_goal=goal,
         daily_budget=float(budget) if budget is not None else None,
         status=r.get("status"),
     )

@@ -8,26 +8,22 @@ that needs tuning) has to be tuned SOMEWHERE. Tuning it on holdout would
 invalidate the final evaluation ("holdout is sacred -- touch it once, at the
 very end"). This gives that somewhere.
 
-IMPORTANT -- this is a ONE-WAY, IN-PLACE TRANSFORM of data/train/, by design:
-    1. `python scripts/split.py ...`         -> data/train/{train.json, meta_train.json}  (FULL train, 605)
-    2. `python scripts/split_validation.py`  -> reads those, REPLACES them with:
-           data/train/conv_train.json   (the ~82% slice used to fit/score during tuning)
-           data/train/meta_train.json   (OVERWRITTEN: meta for conv_train, not full train anymore)
-           data/train/conv_val.json     (the ~18% slice used to check/tune against)
-           data/train/meta_val.json     (meta for conv_val)
-       train.json is deleted -- there is no single file called "full train" on disk
-       after step 2 runs. Re-run step 1 first if you ever need the full set again
-       (e.g. for the FINAL production run, which should fit on all of train --
-       conv_train is a subset, meant for tuning only, not for the real scoreboard).
+Reads the FULL train set written by split.py and writes the tuning slices next
+to it. Nothing is overwritten or deleted, so split.py and this script can be
+re-run in order, any number of times, from the original data:
+    data/train/full_train.json, meta_full_train.json   <- input (split.py)
+    data/train/conv_train.json, meta_train.json        <- tuning fit set
+    data/train/conv_val.json,   meta_val.json          <- tuning check set
+The merchant-facing pipeline runs on full_train; conv_train is for tuning only.
 
-Usage:
-    python scripts/split_validation.py --train-dir data/train --out-dir data/train
+Usage (from the repo root):
+    python3 -m scripts.split_validation
 """
 
 import argparse
 from pathlib import Path
 
-from split_lib import (
+from scripts.split_lib import (
     campaigns_on_or_after,
     customer_overlap,
     load_json,
@@ -41,20 +37,19 @@ from split_lib import (
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train-dir", default="data/train", help="Directory holding the FULL train.json + meta_train.json")
+    parser.add_argument("--train-dir", default="data/train", help="Directory holding full_train.json + meta_full_train.json")
     parser.add_argument("--out-dir", default="data/train", help="Where to write conv_train/meta_train/conv_val/meta_val")
     args = parser.parse_args()
 
     train_dir = Path(args.train_dir)
-    train_json_path = train_dir / "train.json"
+    train_json_path = train_dir / "full_train.json"
     if not train_json_path.exists():
         raise SystemExit(
-            f"{train_json_path} not found. Run scripts/split.py first to produce the FULL "
-            f"train.json/meta_train.json -- split_validation.py consumes and replaces those."
+            f"{train_json_path} not found. Run `python3 -m scripts.split` first."
         )
 
     conversations = load_json(train_json_path)
-    meta = load_json(train_dir / "meta_train.json")
+    meta = load_json(train_dir / "meta_full_train.json")
 
     split_config = load_split_config()
     validation_campaign_ids = campaigns_on_or_after(
@@ -66,15 +61,9 @@ def main():
 
     out_dir = Path(args.out_dir)
     write_json(out_dir / "conv_train.json", conv_train)
-    write_json(out_dir / "meta_train.json", meta_train)  # overwrites the FULL meta_train.json
+    write_json(out_dir / "meta_train.json", meta_train)
     write_json(out_dir / "conv_val.json", conv_val)
     write_json(out_dir / "meta_val.json", meta_val)
-
-    # train.json (full) is now represented by conv_train.json + meta_train.json's
-    # inner subset -- remove it so there's no stale, misleadingly-named "full train"
-    # file left sitting next to the tuning split.
-    if out_dir.resolve() == train_dir.resolve() and train_json_path.exists():
-        train_json_path.unlink()
 
     total = len(conversations)
     print(f"Validation campaigns (start_date >= {split_config['validation_cutoff_date']}, within train):")
@@ -114,7 +103,6 @@ def main():
     )
 
     print(f"\nWrote conv_train.json / meta_train.json / conv_val.json / meta_val.json to {out_dir}")
-    print(f"(train.json removed -- {out_dir}/meta_train.json is now conv_train's meta, not full train's)")
 
 
 if __name__ == "__main__":

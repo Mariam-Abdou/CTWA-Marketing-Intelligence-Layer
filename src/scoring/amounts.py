@@ -13,17 +13,21 @@ def get_outcome_amounts(conversation: Conversation) -> OutcomeAmounts:
     outcome = conversation.outcome.raw
 
     if outcome_type == "delivered":
-        return OutcomeAmounts(net=outcome.get("total", 0))
+        total = outcome.get("total")
+        return OutcomeAmounts(net=float(total) if total is not None else None)
 
     if outcome_type in ("ghosted", "cancelled"):
         return OutcomeAmounts(net=0.0)
 
     if outcome_type == "refunded":
-        total = outcome.get("total", 0)
-        refunded_amount = outcome.get("refunded_amount", 0)
+        total = outcome.get("total")
+        refunded_amount = outcome.get("refunded_amount")
+        if total is None or refunded_amount is None:
+            return OutcomeAmounts(net=None)
         return OutcomeAmounts(net=total - refunded_amount)
 
-    # stuck_pending, active, adversarial -> excluded
+    # stuck_pending, active, adversarial, unknown labels, and orders missing an
+    # amount -> excluded (net=None), never counted as a failed sale
     return OutcomeAmounts(net=None)
 
 

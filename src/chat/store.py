@@ -1,6 +1,7 @@
 """Read-only access to the stored decisions (outputs/trace.db) for the chat."""
 
 import json
+import time
 from collections import Counter
 import sqlite3
 from contextlib import closing
@@ -204,6 +205,7 @@ SQL_VIEWS = {
                       "WHERE run_id = (SELECT run_id FROM runs WHERE is_current = 1)",
 }
 SQL_MAX_ROWS = 50
+SQL_MAX_SECONDS = 2.0   # a model-written query that runs longer is aborted
 
 
 def sql_schema(db_path: str = DB) -> str:
@@ -243,12 +245,17 @@ def run_sql(query: str, db_path: str = DB) -> dict:
                 return sqlite3.SQLITE_OK
             return sqlite3.SQLITE_DENY
         conn.set_authorizer(authorizer)
+        # Abort runaway queries (e.g. WITH RECURSIVE without a stop) instead of freezing the app.
+        deadline = time.monotonic() + SQL_MAX_SECONDS
+        conn.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 10_000)
         cur = conn.execute(q)
         cols = [c[0] for c in cur.description]
         rows = cur.fetchmany(SQL_MAX_ROWS + 1)
         return {"columns": cols, "rows": [[_compact(x) for x in r] for r in rows[:SQL_MAX_ROWS]],
                 "truncated": len(rows) > SQL_MAX_ROWS}
     except sqlite3.Error as exc:
+        if time.monotonic() > deadline:
+            return {"error": f"query stopped: it ran longer than {SQL_MAX_SECONDS:.0f} s. Use a simpler query."}
         return {"error": f"{type(exc).__name__}: {exc}"}
     finally:
         conn.close()

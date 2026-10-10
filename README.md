@@ -171,3 +171,9 @@ computed and safe.
 - `PROBABILITY_THRESHOLD = 0.75` is not yet validated against holdout.
 - A proposed test is a margins estimate, not a prediction. The interaction
   between an audience and a creative is precisely what it is buying.
+- The chat answer guard checks that every number, quote and action appears in
+  the stored facts. It cannot tell that a real number belongs to the wrong
+  field (e.g. 12 ghosted chats written as 12 resolved chats). On injected errors
+  it catches 538 of 539 (`scripts/eval_guard.py`) but 0 of 48 such swaps.
+  Answers are also not checked for completeness or tone. Faithfulness of the
+  written answers was graded by hand on a sample (`scripts/eval_answers.py`).

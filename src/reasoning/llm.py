@@ -72,6 +72,10 @@ BUCKET_PLAIN = {
 REJECT_LOG = CACHE_PATH.parent / "reasoning_rejected.log"
 
 
+def pct(x: float | None) -> str:
+    return f"{x:.0%}" if x is not None else "n/a"
+
+
 @dataclass
 class DecisionFacts:
     """The only thing any prompt in this package is allowed to see. No message
@@ -85,7 +89,7 @@ class DecisionFacts:
     successes: int
     n: int
     excluded: int
-    raw_rate: float
+    raw_rate: float | None
     score: float | None
     interval: tuple[float, float] | None
     baseline: float | None

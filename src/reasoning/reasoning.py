@@ -7,7 +7,7 @@ task in this package.
 """
 
 from .llm import (
-    BUCKET_PLAIN, DecisionFacts, LEVEL_NOUN, client, generate,
+    BUCKET_PLAIN, DecisionFacts, LEVEL_NOUN, client, generate, pct,
     load_cache, report, save_cache,
 )
 
@@ -44,7 +44,7 @@ def _facts_text(f: DecisionFacts) -> str:
     lines = [
         f'What this is: a {noun} called "{f.name}" ({f.detail})',
         f"What was decided: {f.action}, and it {BUCKET_PLAIN[f.bucket]}",
-        f"How it did: {f.successes} of {f.n} conversations ended in a sale ({f.raw_rate:.0%})",
+        f"How it did: {f.successes} of {f.n} conversations ended in a sale ({pct(f.raw_rate)})",
     ]
     if f.baseline is not None:
         lines.append(f"What comparable {noun}s manage: {f.baseline:.0%}")

@@ -45,7 +45,6 @@ class Reply:
     latency_ms: int = 0
     options: list = field(default_factory=list)     # clarify: [{id, name, level}]
     retry_after: float | None = None                # busy: seconds to wait
-    log_id: int | None = None
 
 
 MONEY_WORDS = re.compile(r"revenue|roas|return on|\bspend|\bspent|order value|refund|\begp\b|"
@@ -72,7 +71,7 @@ class ChatBot:
     def ask(self, question: str, selected_id: str | None = None, history: list | None = None,
             session_id: str | None = None, page: str | None = None) -> Reply:
         reply = self._ask(question, selected_id, history or [])
-        reply.log_id = chat_log.write(reply, question=question, session_id=session_id, page=page,
+        chat_log.write(reply, question=question, session_id=session_id, page=page,
                                       selected_id=selected_id, history_turns=len(history or []) // 2,
                                       path=self.log_path)
         return reply
@@ -146,6 +145,20 @@ class ChatBot:
                 {"role": "assistant", "content": a.text},
                 {"role": "user", "content": "Your answer failed these checks: " + "; ".join(guard.issues)
                  + ". Rewrite it using ONLY the facts, with no new numbers, no advice and no predictions."}]
+            # The provider allows 8,000 tokens/minute per model and one answer costs ~4,400, so a rewrite
+            # sent right after the first answer hits a 429 (this was the main cause of canned replies).
+            # Wait for room in the minute; if that takes too long, skip the rewrite.
+            wait = BUDGETS[_cfg["answer_model"]].wait_seconds(_cfg.get("estimated_rewrite_tokens", 4600))
+            if wait > _cfg.get("max_rewrite_wait_s", 30):
+                reply.guard = {"ok": False, "issues": guard.issues}
+                reply.answer_meta = {**a.meta, "first_issues": guard.issues}
+                reply.facts = a.facts
+                reply.text = deterministic_reply(g.entity_ids, g.language)
+                reply.fallback = "rate_limit:rewrite_skipped"
+                reply.latency_ms = round((time.monotonic() - start) * 1000)
+                return reply
+            if wait > 0:
+                time.sleep(wait + 0.5)
             a2 = write_answer(self.client, question, g, retry_history, sel_name, facts=a.facts)
             guard2 = check(a2.text, a2.facts, question)
             reply.answer_meta = {**a.meta, "retry": a2.meta, "first_issues": guard.issues}
@@ -157,6 +170,7 @@ class ChatBot:
             reply.text = with_money_caveat(a.text, g.language)
         else:
             reply.text = deterministic_reply(g.entity_ids, g.language)
-            reply.fallback = "llm_error" if a.meta.get("error") else "guard_failed"
+            reply.fallback = ("rate_limit:rewrite" if a.meta.get("rate_limited")
+                              else "llm_error" if a.meta.get("error") else "guard_failed")
         reply.latency_ms = round((time.monotonic() - start) * 1000)
         return reply

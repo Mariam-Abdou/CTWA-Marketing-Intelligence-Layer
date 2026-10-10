@@ -6,18 +6,22 @@ split - it's a static catalog needed identically on both sides.
 For carving a validation slice OUT OF train (to tune thresholds without ever
 touching holdout), see split_validation.py -- same method, different cutoff.
 
-Usage:
-    python scripts/split.py --conversations data/original/conversations.json \
+Usage (from the repo root; all arguments default to the paths below):
+    python3 -m scripts.split
+    python3 -m scripts.split --conversations data/original/conversations.json \
                              --meta data/original/meta_data.json \
                              --products data/original/products.json \
-                             --out-dir ./data
+                             --out-dir data
+
+Writes data/train/{full_train,meta_full_train}.json (what src.pipeline reads)
+and data/holdout/{holdout,meta_holdout}.json.
 """
 
 import argparse
 import shutil
 from pathlib import Path
 
-from split_lib import (
+from scripts.split_lib import (
     campaigns_on_or_after,
     load_json,
     load_split_config,
@@ -30,10 +34,10 @@ from split_lib import (
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--conversations", required=True)
-    parser.add_argument("--meta", required=True)
-    parser.add_argument("--products", required=True)
-    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--conversations", default="data/original/conversations.json")
+    parser.add_argument("--meta", default="data/original/meta_data.json")
+    parser.add_argument("--products", default="data/original/products.json")
+    parser.add_argument("--out-dir", default="data")
     args = parser.parse_args()
 
     conversations = load_json(args.conversations)
@@ -51,9 +55,9 @@ def main():
     train_dir = out_dir / "train"
     holdout_dir = out_dir / "holdout"
 
-    write_json(train_dir / "train.json", train_convs)
+    write_json(train_dir / "full_train.json", train_convs)
     write_json(holdout_dir / "holdout.json", holdout_convs)
-    write_json(train_dir / "meta_train.json", train_meta)
+    write_json(train_dir / "meta_full_train.json", train_meta)
     write_json(holdout_dir / "meta_holdout.json", holdout_meta)
 
     shutil.copy(args.products, train_dir / "products.json")

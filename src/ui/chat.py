@@ -5,7 +5,6 @@ import uuid
 import streamlit as st
 
 from ..chat.bot import ChatBot
-from ..chat.log import feedback
 
 ROUTE_NOTE = {"refuse_decision": "Explains decisions only — does not make new ones.",
               "refuse_scope": "Outside what this assistant covers."}
@@ -56,17 +55,6 @@ def _render_assistant(m, key, i, on_pick):
                        f"{'passed' if r.guard.get('ok') else 'failed'} · {r.latency_ms / 1000:.1f} s")
             if r.answer_meta.get("first_issues"):
                 st.caption("First draft was rewritten: " + "; ".join(r.answer_meta["first_issues"]))
-    if r.log_id and r.route not in ("clarify", "busy"):
-        fb = st.session_state.setdefault(f"fb_{r.log_id}", None)
-        log_path = get_bot().log_path          # same file the bot logged to
-        if fb is None:
-            c1, c2, _ = st.columns([1, 1, 8])
-            if c1.button("👍", key=f"{key}_up_{i}", help="Helpful"):
-                feedback(r.log_id, 1, path=log_path); st.session_state[f"fb_{r.log_id}"] = 1; st.rerun()
-            if c2.button("👎", key=f"{key}_down_{i}", help="Not helpful"):
-                feedback(r.log_id, -1, path=log_path); st.session_state[f"fb_{r.log_id}"] = -1; st.rerun()
-        else:
-            st.caption("Thanks for the feedback." if fb == 1 else "Thanks — noted as not helpful.")
 
 
 def chat_panel(key: str, selected_id: str | None = None, page: str = "chat",
