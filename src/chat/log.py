@@ -1,6 +1,6 @@
 """
 Chat log: one row per question: what was asked, how it was routed, which tools ran, 
-what the guard said, what the user saw, and their feedback.
+what the guard said, and what the user saw.
 """
 
 import json
@@ -23,8 +23,7 @@ CREATE TABLE IF NOT EXISTS chat_log (
     entity_ids_json TEXT, standalone_question TEXT, options_json TEXT,
     reply TEXT, fallback TEXT, guard_ok INTEGER, guard_issues_json TEXT,
     first_attempt_issues_json TEXT, tools_json TEXT,
-    gate_tokens INTEGER, answer_tokens INTEGER, latency_ms INTEGER, error TEXT,
-    feedback INTEGER, feedback_note TEXT
+    gate_tokens INTEGER, answer_tokens INTEGER, latency_ms INTEGER, error TEXT
 )"""
 
 
@@ -74,13 +73,3 @@ def write(reply, *, question, session_id=None, page=None, selected_id=None, hist
             return cur.lastrowid
     except Exception:
         return None
-
-
-def feedback(log_id: int, value: int, note: str | None = None, path=None) -> None:
-    """value: 1 = helpful, -1 = not helpful."""
-    path = path or _cfg.get("log_path", "outputs/chat_log.db")
-    try:
-        with closing(_connect(path)) as db, db:
-            db.execute("UPDATE chat_log SET feedback = ?, feedback_note = ? WHERE id = ?", (value, note, log_id))
-    except Exception:
-        pass

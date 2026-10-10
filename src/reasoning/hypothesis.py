@@ -14,7 +14,7 @@ before this module is reached, and its wording is the fallback below.
 """
 
 from .llm import (
-    DecisionFacts, LEVEL_NOUN, client, generate,
+    DecisionFacts, LEVEL_NOUN, client, generate, pct,
     load_cache, report, save_cache,
 )
 
@@ -68,7 +68,7 @@ def _facts_text(f: DecisionFacts) -> str:
         f'What is being tested: a {noun} called "{f.name}"',
         f"THE KIND OF {noun.upper()} IT IS: {kind}",
         f"YOUR GUESS MUST BE ABOUT {ANCHOR[f.level]}.",
-        f"How it did: {f.successes} of {f.n} conversations ended in a sale ({f.raw_rate:.0%}), "
+        f"How it did: {f.successes} of {f.n} conversations ended in a sale ({pct(f.raw_rate)}), "
         f"against {f.baseline:.0%} for comparable {noun}s -- close enough that it is not settled",
     ]
     if f.is_thin:
@@ -87,7 +87,7 @@ def _facts_text(f: DecisionFacts) -> str:
 
 def _template(f: DecisionFacts) -> str:
     noun = LEVEL_NOUN[f.level]
-    reason = f"{f.successes} of {f.n} conversations ended in a sale ({f.raw_rate:.0%}) against a {f.baseline:.0%} bar"
+    reason = f"{f.successes} of {f.n} conversations ended in a sale ({pct(f.raw_rate)}) against a {f.baseline:.0%} bar"
     if f.is_fatigued:
         why_here = "it is showing audience fatigue, so it gets a test budget instead of a scale budget"
     elif f.is_underperforming:

@@ -13,6 +13,7 @@ A failed answer gets one rewrite; if fails, then falls back to a deterministic
 reply built from the stored decision (src/chat/bot.py).
 """
 
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -22,11 +23,19 @@ from ..config import load_config
 THRESHOLDS = [load_config()["decision"]["probability_threshold"] * 100]
 
 NUM = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?\s*(%)?")
+_PRED = (r"(?:\b(?:is|was|are|were|be|been|set to|marked(?: as)?|labell?ed(?: as)?|action|decision|verdict|"
+         r"stays?|stayed|remains?|remained|got|gets|becomes?|became)\b[\s:*\"'“”(→=-]*)")
 ACTION_WORDS = {
-    "scale": r"\bscal(?:e|ed|ing)\b",
-    "kill": r"\b(?:kill(?:ed)?|stop(?:ped)? spending|turned off|shut down)\b",
-    "hold": r"\b(?:hold|held|on hold)\b",
+    "scale": r"\bscaled\b|" + _PRED + r"scale\b",
+    "kill": r"\b(?:killed|turned off|shut down|stopped spending)\b|" + _PRED + r"kill\b",
+    "hold": r"\b(?:put on hold|on hold|held)\b|" + _PRED + r"hold\b",
 }
+_NEG = re.compile(r"\b(?:not|never|no|nor|without|neither)\b|n't", re.I)
+
+
+def _negated(sentence: str, pos: int) -> bool:
+    """'was not scaled', 'never killed': the sentence says the entity did NOT get that action."""
+    return bool(_NEG.search(sentence[max(0, pos - 25):pos]))
 ADVICE = [
     r"\b(?:i|we) (?:would )?(?:recommend|suggest|advise)\b",
     r"\byou should (?:increase|raise|double|cut|reduce|lower|pause|stop|scale|kill|spend|move|shift|turn|try)\b",
@@ -59,16 +68,27 @@ def _walk(x, out):
             _walk(v, out)
 
 
-def _grounded(value: float, decimals: int, is_pct: bool, known: set):
+def _half_up(x: float, d: int) -> float:
+    """Round the way people do (42.5 -> 43); Python's round() would give 42."""
+    f = 10 ** d
+    return math.floor(x * f + 0.5 + 1e-9) / f
+
+
+def _grounded(value: float, decimals: int, is_pct: bool, known: set, money: bool = False):
     """Returns (grounded, crossed): crossed = the only way this number matches
-    a fact is by rounding it over a decision bar (74.6% written as 75%)."""
+    a fact is by rounding it over a decision bar (74.6% written as 75%).
+    A plain whole number (a count, days...) must equal a fact EXACTLY: 12 is not 11.83 rounded.
+    Rounding is allowed for percents, decimals and money ("round money to whole EGP")."""
     crossed = None
+    plain_int = decimals == 0 and not is_pct and not money
     for k in known:
-        cands = [k, k * 100] if (is_pct or k <= 1) else [k]
+        cands = [k] if plain_int else ([k, k * 100] if (is_pct or k <= 1) else [k])
         for c in cands:
             if abs(c - value) < 1e-9:
                 return True, None
-            if abs(round(c, decimals) - value) < 1e-9 or (decimals == 0 and abs(c - value) <= 0.5):
+            if plain_int:
+                continue
+            if abs(round(c, decimals) - value) < 1e-9 or abs(_half_up(c, decimals) - value) < 1e-9:
                 if is_pct and any(min(c, value) < t <= max(c, value) for t in THRESHOLDS):
                     crossed = c
                     continue
@@ -90,7 +110,8 @@ def check_numbers(text: str, facts: list, question: str = "") -> list:
         value = float(raw + (f".{dec}" if dec else ""))
         if not dec and value in (0, 1) and not m.group(3):   # "one", "1 of", trivial
             continue
-        ok, crossed = _grounded(value, len(dec), bool(m.group(3)), known)
+        money = bool(re.match(r"\s*(?:EGP|LE\b|جنيه|ج\.م)", text[m.end():m.end() + 10], re.I))
+        ok, crossed = _grounded(value, len(dec), bool(m.group(3)), known, money)
         if crossed is not None:
             issues.append(f"{m.group(0).strip()} is {crossed:.1f}% rounded across the {THRESHOLDS[0]:.0f}% "
                           f"decision bar -- write {crossed:.1f}%")
@@ -131,16 +152,28 @@ def check_actions(text: str, facts: list) -> list:
                 continue
             if any(o.lower() in s.lower() for o in others):
                 continue  # sentence talks about several entities: too ambiguous to check
+            # entity names can contain action words ("3% LAL scale"): take every name out of the
+            # sentence before looking for an action word, or a correct answer is rejected
+            bare = s
+            for n in sorted(ents, key=len, reverse=True):
+                bare = re.sub(re.escape(n), " ", bare, flags=re.I)
             for action, pat in ACTION_WORDS.items():
-                if action not in (final, raw) and re.search(pat, s, re.I):
+                if action in (final, raw):
+                    continue
+                if any(not _negated(bare, m.start()) for m in re.finditer(pat, bare, re.I)):
                     issues.append(f"'{name}' described as {action}, stored action is {final}")
     return list(dict.fromkeys(issues))
 
 
 GUARDRAIL_TALK = re.compile(r"stop line|fatigu|over the line|above the line|cost.per.sale guardrail|cpa guardrail",
                             re.I)
-NOT_RUN = re.compile(r"not (?:been )?(?:checked|applied|run)|only runs?|did ?n[o']t run|wasn'?t checked|"
-                     r"were not checked|never checked|didn'?t apply|did not apply", re.I)
+NOT_RUN = re.compile(r"not (?:been |even |yet |actually |really )*(?:checked|applied|run|evaluated|tested)|only runs?|"
+                     r"did ?n[o']t (?:even )?(?:run|apply|check)|wasn'?t checked|were not checked|never checked|"
+                     r"didn'?t apply|did not apply|"
+                     r"ما\s*اتفحص|مااتفحص|ما\s*اتطبق|ماتطبق|ما\s*اتشيك|مش\s*(?:متفحص|متطبق|اتفحص|اتطبق)|"
+                     r"لم\s*(?:يتم|تُفحص|تفحص|تُطبق)|لا\s*(?:تُ?طبق|تفحص)|etfa7asoo?sh|mat7sebsh", re.I)
+# the explore TEST has its own "stop rule" / "judging line" -- that is not the cost-per-sale guardrail
+TEST_STOP_RULE = re.compile(r"stop rule|judging line|stop_rule|قاعدة الإيقاف", re.I)
 
 
 VERDICT = re.compile(r"\b(?:above|over|exceed\w*|cross\w*|past|beyond)\b[^.]{0,25}\bline\b|\bfatigued\b|"
@@ -158,6 +191,8 @@ def check_guardrail_reasoning(text: str, facts: list) -> list:
         if not any("NOT checked" in line for line in r["decision_path"]):
             continue
         for s in re.split(r"(?<=[.!?؟\n])\s+", text):
+            if TEST_STOP_RULE.search(s):
+                continue
             # a verdict is wrong even if the sentence also says "not applied"
             if VERDICT.search(s) or (GUARDRAIL_TALK.search(s) and not NOT_RUN.search(s)):
                 issues.append(f"talks about a guardrail that did not run for '{r['entity']['name']}': "
@@ -192,11 +227,48 @@ def check_probabilities(text: str, facts: list) -> list:
     return issues
 
 
+BAR_WORDS = re.compile(r"\bbar\b|threshold|\brule\b|require|at least|\bneeds?\b|to act|limit|\bline\b", re.I)
+
+
+def check_bar_rounding(text: str, facts: list) -> list:
+    """'75%' written for a probability that is really 74.6%: 75 is also the decision bar, so it is 'in the facts'
+    and the number check passes it. Flag a bare bar value when the entity's P(better)/P(worse) is just under it."""
+    ents = [f["result"] for f in facts if f["tool"] == "get_entity"
+            and isinstance(f["result"], dict) and "steps" in f["result"]]
+    if len(ents) != 1:
+        return []
+    dec = next((st.get("out", {}) for st in ents[0]["steps"] if st.get("key") == "decision"), {})
+    ps = [dec.get("p_better"), dec.get("p_worse")]
+    issues = []
+    for sent in re.split(r"(?<=[.!?؟\n])\s+", text):
+        if BAR_WORDS.search(sent):
+            continue
+        for m in NUM.finditer(sent):
+            if not m.group(3):
+                continue
+            v = float(m.group(1).replace(",", "") + (f".{m.group(2)}" if m.group(2) else ""))
+            for t in THRESHOLDS:
+                if abs(v - t) < 1e-9 and any(p is not None and t - 0.5 < p * 100 < t for p in ps):
+                    actual = next(p * 100 for p in ps if p is not None and t - 0.5 < p * 100 < t)
+                    issues.append(f"{m.group(0).strip()} written but the probability is {actual:.1f}% "
+                                  f"(just under the {t:.0f}% bar)")
+    return issues
+
+
 QUOTE = re.compile(r'["“”«»]([^"“”«»\n]{4,400})["“”«»]')
 
 
+# Models write typographic characters (non-breaking hyphen in "multi‑city", narrow space in "70 %", curly
+# quotes, **bold**). They are formatting, not changed facts: fold them before comparing text.
+_FOLD = {**{c: "-" for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"},
+         **{c: " " for c in "\u00a0\u2007\u2009\u200a\u202f"},
+         **{c: "'" for c in "\u2018\u2019\u02bc"}, **{c: '"' for c in "\u201c\u201d"},
+         "*": ""}
+_FOLD_TABLE = str.maketrans(_FOLD)
+
+
 def _norm(s: str) -> str:
-    return " ".join(s.lower().replace("’", "'").split())
+    return " ".join(s.translate(_FOLD_TABLE).lower().split()).replace(" %", "%")
 
 
 def _fact_strings(x, out):
@@ -210,12 +282,13 @@ def _fact_strings(x, out):
             _fact_strings(v, out)
 
 
-def check_quotes(text: str, facts: list) -> list:
+def check_quotes(text: str, facts: list, question: str = "") -> list:
     """Anything inside quotes must appear word for word in what the tools
     returned -- a customer's message, a name, a label. A quote the model
     made up, or 'quoted' in translation, is caught here."""
     strings = []
     _fact_strings([f["result"] for f in facts], strings)
+    strings.append(_norm(question))          # quoting the owner's own words back is not a made-up quote
     haystack = "\n".join(strings)
     issues = []
     for m in QUOTE.finditer(text):
@@ -235,6 +308,6 @@ def check(text: str, facts: list, question: str = "") -> GuardResult:
     if not text.strip():
         return GuardResult(False, ["empty answer"])
     issues = (check_numbers(text, facts, question) + check_actions(text, facts) + check_advice(text)
-              + check_guardrail_reasoning(text, facts) + check_probabilities(text, facts)
-              + check_quotes(text, facts))
+              + check_guardrail_reasoning(text, facts) + check_probabilities(text, facts) + check_bar_rounding(text, facts)
+              + check_quotes(text, facts, question))
     return GuardResult(not issues, issues)

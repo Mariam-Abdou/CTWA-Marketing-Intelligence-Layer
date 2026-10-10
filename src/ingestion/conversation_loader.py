@@ -41,9 +41,9 @@ class Conversation:
 
 
 def _parse_source(raw: dict, conv_id: str) -> ConversationSource:
-    validate_enum(raw.get("platform"), PLATFORMS, "platform", conv_id)
+    platform = validate_enum(raw.get("platform"), PLATFORMS, "platform", conv_id)
     return ConversationSource(
-        platform=raw["platform"],
+        platform=platform,
         ctwa_clid=raw.get("ctwa_clid"),
         ad_id=raw.get("ad_id"),
         campaign_id=raw.get("campaign_id"),
@@ -53,9 +53,9 @@ def _parse_source(raw: dict, conv_id: str) -> ConversationSource:
 
 
 def _parse_outcome(raw: dict, conv_id: str) -> ConversationOutcome:
-    validate_enum(raw.get("type"), KNOWN_OUTCOME_TYPES, "outcome.type", conv_id)
+    outcome_type = validate_enum(raw.get("type"), KNOWN_OUTCOME_TYPES, "outcome.type", conv_id)
     return ConversationOutcome(
-        type=raw["type"],
+        type=outcome_type,
         order_id=raw.get("order_id"),
         total=raw.get("total"),
         raw=raw,

@@ -106,9 +106,10 @@ def print_scoreboard(label, rows):
         score = f"{r['score']:.3f}" if r["score"] is not None else "n/a"
         interval = f"[{r['interval'][0]:.3f}, {r['interval'][1]:.3f}]" if r["interval"] else "n/a"
         budget = f"{r['budget_share']:.1%}" if r["budget_share"] else "-"
+        raw = f"{r['raw_rate']:.3f}" if r["raw_rate"] is not None else "n/a"
         print(
             f"{r['id']:<24} {r['name']:<28} {r['detail']:<32}\n"
-            f"    raw={r['raw_rate']:.3f}  score={score:<6} interval={interval:<18} "
+            f"    raw={raw}  score={score:<6} interval={interval:<18} "
             f"action={r['action']:<5} bucket={r['bucket']:<8} budget={budget:<6} why={'; '.join(r['why'])}"
         )
         print(f"    -> {r['reasoning']}")
