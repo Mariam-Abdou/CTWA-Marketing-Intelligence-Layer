@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from .outcome_decision import decide_with_rule
-from .guardrails import FATIGUE_FREQUENCY_THRESHOLD, cpa_check, fatigue_check
+from .guardrails import cpa_check, fatigue_check
 from .explore_selection import ExploreExperiment, select_explore_tests
 from ..ingestion.meta_loader import DailyInsight
 from ..scoring.aggregator import RawCounts
@@ -193,43 +193,3 @@ def build_allocation_plan(
         plan_trace[id_]["bucket"] = plan.bucket_by_id.get(id_, "none")
 
     return plan
-
-
-def print_plan(plan: AllocationPlan) -> None:
-    print(f"Exploit ({EXPLOIT_SHARE:.0%} of budget)")
-    print(f"Explore ({EXPLORE_SHARE:.0%} of budget)\n")
-
-    if plan.warned:
-        print(
-            f"Frequency warning (2.5-{FATIGUE_FREQUENCY_THRESHOLD:.1f}, "
-            f"informational only, not vetoed): {', '.join(plan.warned)}\n"
-        )
-
-    print("--- Exploit ---")
-    for a in sorted(plan.exploit, key=lambda a: a.budget_share, reverse=True):
-        print(
-            f"{a.id}: {a.action}, budget_share={a.budget_share:.1%}, "
-            f"P(better)={a.p_better:.4f}, P(worse)={a.p_worse:.4f}"
-        )
-
-    if plan.kill:
-        print("\n--- Kill (no budget, stop entirely) ---")
-        for id_ in plan.kill:
-            print(id_)
-
-    print("\n--- Explore ---")
-    for e in plan.explore:
-        flag = ""
-        if e.id in plan.fatigued:
-            flag = " [fatigue-vetoed scale]"
-        elif e.id in plan.underperforming:
-            flag = " [CPA-vetoed scale]"
-        print(f"{e.name} ({e.id}){flag}: budget_share={e.budget_share:.1%}")
-        print(f"  hypothesis: {e.hypothesis}")
-        print(f"  stop_rule: {e.stop_rule}")
-
-    if plan.dropped_from_explore:
-        print(
-            f"\n--- Held, no budget (lost the top-{MAX_EXPLORE_TESTS} explore ranking) ---"
-        )
-        print(", ".join(plan.dropped_from_explore))

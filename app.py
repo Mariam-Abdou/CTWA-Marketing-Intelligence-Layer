@@ -7,7 +7,6 @@ CTWA Marketing Intelligence -- the merchant app.
 Pages: Dashboard (decisions only) · Explore (filter/search everything) ·
 Report (one id, every step behind it, chat on the side) · Ask (general chat).
 Every page reads outputs/trace.db; nothing here computes a decision.
-The previous single-page scoreboard is kept as app_legacy.py.
 """
 
 import streamlit as st

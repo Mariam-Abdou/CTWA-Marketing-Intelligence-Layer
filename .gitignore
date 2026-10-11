@@ -1,20 +1,13 @@
-# Python bytecode
+# Python
 __pycache__/
 *.pyc
 .env
 .DS_Store
-_verify_app.py
-_verify_app2.py
 
-# Personal notes, reasoning logs and findings (kept locally, not in the repo)
+# Personal notes and diagrams (local only)
 notes/
 *.excalidraw
 
-# Generated data -- contains customer names/phones (trace) and user questions (chat log)
-outputs/trace.db
-outputs/trace.db-journal
-outputs/chat_log.db
-outputs/chat_log.db-journal
-outputs/gate_eval_*.json
+# Data and generated runs: customer names/phones, chat logs, timestamped outputs
 data/
 outputs/
