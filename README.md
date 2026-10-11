@@ -33,29 +33,6 @@ Scoreboard fields:
 
 ---
 
-## How a decision is made
-
-```
-conversations.json ─┐
-                    ├─► joiner ─► classifier ─► aggregator ─► corrector ─► decide()
-meta_data.json ─────┘              (sale?)      (counts)     (shrinkage)   (scale/hold/kill)
-                                                                              │
-                                        ┌─────────────────────────────────────┤
-                                        ▼                                     ▼
-                                  guardrails                            allocation
-                              fatigue · cost-per-order                  70% exploit
-                                                                        30% explore
-                                        │                                     │
-                                        └──────────────┬──────────────────────┘
-                                                       ▼
-                                            reasoning layer (LLM)
-                                          explains, never decides
-                                                       ▼
-                       scoreboard.csv · plan.json · trace.db ─► app.py · chat
-```
-
----
-
 ## Architecture
 
 The full diagram is in [`ARCHITECTURE.md`](ARCHITECTURE.md) ([image](https://github.com/Mariam-Abdou/CTWA-Marketing-Intelligence-Layer/blob/main/ARCHITECTURE.png)).
