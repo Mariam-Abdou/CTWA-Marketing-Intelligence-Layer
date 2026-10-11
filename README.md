@@ -1,29 +1,20 @@
 # CTWA Marketing Intelligence Layer
 
 Meta ads send customers into WhatsApp. Meta sees the click and stops there.
-Everything after it — the chat, the order, the refund, the silence — is
+Everything after it (the chat, the order, the refund, the reply) is
 first-party data sitting unused in the logs. This turns that into a decision
 for every campaign, audience and creative: **scale, hold, or stop**, plus a
 split of the next budget between what is proven and what is worth finding out.
-
-```
-python3 -m pip install -r requirements.txt     # Python 3.10+
-python3 -m scripts.split                       # data/original → data/train + data/holdout
-python3 -m src.pipeline                        # scores everything, writes outputs/
-streamlit run app.py                           # merchant app; reads the newest run
-```
 
 ---
 
 ## Outputs
 
-Every run writes three things to `outputs/`.
-
 | file | what it is |
 | --- | --- |
-| `scoreboard_<run>.csv` | one row per id, all three levels. The deliverable |
-| `plan_<run>.json` | the same rows plus what has no id to sit on: budget totals, proposed tests, held-back items, audit findings |
-| `trace.db` | SQLite. Every input, 12-step trail and decision per id. **The app and the chat read this** |
+| `scoreboard.csv` | one row per id, all three levels. The deliverable |
+| `plan.json` | budget totals, proposed tests, held-back items, audit findings |
+| `trace.db` | SQLite. Every input, all steps trail and decision per id. |
 
 Scoreboard fields:
 
