@@ -148,20 +148,4 @@ only puts them into words. Delete `src/reasoning/` and the scoreboard is
 identical.
 
 Without `GROQ_API_KEY` every row falls back to a deterministic template and the
-pipeline runs offline, unchanged. Each run prints where its sentences came from:
-
-```
-Reasoning: 14 llm, 24 template:not_funded
-```
-
-Generations are cached on a hash of (facts, prompt, model), so unchanged data
-re-uses its sentence and an edited prompt invalidates itself. Provider, model
-and rate limits are under `reasoning:` and `chat:` in `config.yaml`. Any
-OpenAI-compatible endpoint works with a `base_url` and `model` change.
-
-**Known limitation.** An earlier version checked every number in the output
-against the facts. It rejected four correct sentences and caught no invented
-one, and each fix to it was another exception; meanwhile every wrong claim we
-actually saw contained no number at all. It was removed. Nothing now stops a
-fabricated figure reaching the `reasoning` column. The `why` column beside it is
-computed and safe.
+pipeline runs offline, unchanged.
