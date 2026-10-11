@@ -13,15 +13,9 @@ python3 -m src.pipeline                        # scores everything, writes outpu
 streamlit run app.py                           # merchant app; reads the newest run
 ```
 
-`data/` and `outputs/` are not in the repo. Put `conversations.json`,
-`meta_data.json` and `products.json` in `data/original/` first.
-
-The pipeline needs no API key. A Groq key in `.env` (`GROQ_API_KEY`) only adds
-written explanations and the chat; without it both fall back to templates.
-
 ---
 
-## What comes out
+## Outputs
 
 Every run writes three things to `outputs/`.
 
@@ -46,9 +40,6 @@ Scoreboard fields:
 | `reasoning` | one plain sentence: what to do and why |
 | `hypothesis`, `stop_rule` | explore rows only |
 
-`trace.db` keeps the last `trace_db.keep_runs` runs (default 10). The CSV and
-JSON files are never pruned.
-
 ---
 
 ## How a decision is made
@@ -62,7 +53,7 @@ meta_data.json ─────┘              (sale?)      (counts)     (shrink
                                         ▼                                     ▼
                                   guardrails                            allocation
                               fatigue · cost-per-order                  70% exploit
-                              (can only VETO a scale)                   30% explore
+                                                                        30% explore
                                         │                                     │
                                         └──────────────┬──────────────────────┘
                                                        ▼
@@ -72,37 +63,15 @@ meta_data.json ─────┘              (sale?)      (counts)     (shrink
                        scoreboard.csv · plan.json · trace.db ─► app.py · chat
 ```
 
-### The boundary that never moves
+---
 
-The score and the scale/hold/kill call come from WhatsApp outcomes **only**.
-Meta data can do two things and no more: **veto** a scale (fatigue, cost per
-order), and **weight** the budget split by ROAS. It can never raise a decision,
-and never enters the probability.
+## Architecture
 
-### Static skeleton, dynamic muscle
-
-Built once and unchanged: the ingest and join, the decision rules, the 70/30
-split, the output schema, the evaluation method.
-
-Re-fit every run from all data so far: the shrinkage prior strength
-(`corrector.estimate_prior_strength`, method of moments on that level's own
-rates), the baselines, the ROAS benchmarks, the test horizon.
-
-The contract between them is a calibrated score plus an interval. Because that
-shape never changes, a predictor can be retrained or swapped without touching
-anything downstream.
-
-Every threshold lives in `config.yaml`. Nothing is hardcoded in `src/`.
+The full diagram is in [`ARCHITECTURE.md`](ARCHITECTURE.md) ([image](https://github.com/Mariam-Abdou/CTWA-Marketing-Intelligence-Layer/blob/main/ARCHITECTURE.png)).
 
 ---
 
-## Layers
-
-Each layer talks only to the one below it. The full diagram is in [`ARCHITECTURE.md`](ARCHITECTURE.md) ([image](ARCHITECTURE.png)).
-
----
-
-## The pieces
+## Project structure
 
 ```
 src/
@@ -188,36 +157,6 @@ keyword matching and replies come from stored facts (`chat/fallback/`).
 
 ---
 
-## Splitting the data
-
-Never randomly, never by conversation — repeat customers would land on both
-sides. Everything splits by campaign start date.
-
-```
-all campaigns
-   ├── holdout      start_date >= split.holdout_cutoff_date     touched once, at the very end
-   └── train        (data/train/full_train.json)
-        ├── conv_val    start_date >= split.validation_cutoff_date   tuning lives here
-        └── conv_train                                              everything fits on this
-```
-
-```
-python3 -m scripts.split             # original → train / holdout
-python3 -m scripts.split_validation  # train → conv_train / conv_val
-```
-
-`python3 -m src.pipeline` scores `full_train` (conv_train + conv_val), the
-holdout is never read by it (see `data:` in `config.yaml`).
-
-`always_on` campaigns are excluded from both cutoffs: they run the whole
-timeline, so ordering them by start date would put them in the earliest bucket
-regardless of when their conversations happened. Organic and direct
-conversations carry no ad id, can never be scored, and are never eligible.
-
-`data/` and `outputs/` are git-ignored. They hold customer names and phones, and chat logs.
-
----
-
 ## Evaluation
 
 `eval_gate` and `eval_answers` read the labelled questions from `data/chat_eval/gate_questions.json`, which stays local like the rest of `data/`.
@@ -227,13 +166,9 @@ script says `--split test`, which is run once at the end.
 
 | script | checks |
 | --- | --- |
-| `scripts.tune_threshold` | the scale/kill probability threshold, on conv_val |
-| `scripts.time_split_brier` | does shrinkage beat the raw rate on what an ad does next (first half of its chats → second half) |
 | `scripts.eval_gate` | chat gate: intent accuracy, unsafe answers, over-refusals, confidence calibration |
 | `scripts.eval_answers` | the chat's written answers end to end: routing, guard pass rate, fallback rate |
 | `scripts.eval_guard` | the answer guard as a classifier, on injected errors. No key needed |
-| `scripts.check_llm` | health check when the chat is slow or falls back |
-| `scripts.inspect` | one id's full chain, for debugging |
 
 ---
 
@@ -262,25 +197,3 @@ one, and each fix to it was another exception; meanwhile every wrong claim we
 actually saw contained no number at all. It was removed. Nothing now stops a
 fabricated figure reaching the `reasoning` column. The `why` column beside it is
 computed and safe.
-
----
-
-## What this does not know
-
-- One merchant, 180 days, three seasonal cycles. Numbers are upper bounds.
-- Nothing about stock, deliveries, walk-ins, or anything outside the chat.
-- Revenue and ROAS cover only the chats in the data, not the merchant's full return.
-- 8 of 9 running explore tests cannot reach a verdict at this account's
-  conversation rate — the entities sit 1–3 points apart and would need hundreds
-  of days to separate. The stop rules say so per test.
-- `decision.probability_threshold = 0.75` is not yet validated against holdout.
-- A proposed test is a margins estimate, not a prediction. The interaction
-  between an audience and a creative is precisely what it is buying.
-- The chat answer guard checks that every number, quote and action appears in
-  the stored facts. It cannot tell that a real number belongs to the wrong
-  field (e.g. 12 ghosted chats written as 12 resolved chats). On injected errors
-  it catches 538 of 539 (`scripts/eval_guard.py`) but 0 of 48 such swaps.
-  Answers are also not checked for completeness or tone. Faithfulness of the
-  written answers was graded by hand on a sample (`scripts/eval_answers.py`).
-- The gate's self-reported confidence is not assumed calibrated;
-  `scripts/eval_gate.py` measures how well it tracks accuracy.
